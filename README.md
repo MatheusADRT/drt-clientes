@@ -36,3 +36,9 @@ Modelos WhatsApp sugeridos (categoria *Utility*):
 - `drt_rappel`: "Bonjour {{1}} ! {{2}} Votre carte et les moyens de paiement : {{3}} — DRT Creation"
 - `drt_rapport`: "Bonjour {{1}} ! Votre site en {{2}} : {{3}}. Tous les détails : {{4}} — DRT Creation"
 - `drt_alerte`: "{{1}}"
+
+## Sites estáticos (ex.: marcola-site)
+
+Uma linha antes de `</body>` em cada página:
+`<script src="https://clientes.drtcreation.com/site.js" data-key="CHAVE-DO-CLIENTE" defer></script>`
+Faz o contador de visitas e, se a mensalidade estiver suspensa, mostra a página de pausa (`/pause/CHAVE`) no lugar do site.

@@ -17,6 +17,9 @@ const NT = require('./lib/notify');
 const RV = require('./lib/reviews');
 const BK = require('./lib/backup');
 const BANK = require('./lib/bank');
+const PAUSE_TPL = fs.readFileSync(path.join(__dirname, 'integrations', 'pause-page.html'), 'utf8');
+// script para sites estáticos: contador de visitas + pausa do lado do visitante quando a mensalidade está suspensa
+const SITE_JS = "(function(){var s=document.currentScript,k=s&&s.dataset.key,o=s&&s.src.replace(/\\/site\\.js.*$/,'');if(!k)return;var a=document.createElement('script');a.src=o+'/a.js';a.dataset.key=k;a.defer=true;document.head.appendChild(a);function chk(){fetch(o+'/api/status/'+k,{cache:'no-store'}).then(function(r){return r.json()}).then(function(j){if(j.status==='suspended')return fetch(o+'/pause/'+k).then(function(r){return r.text()}).then(function(h){document.open();document.write(h);document.close()})}).catch(function(){})}chk();setInterval(chk,300000)})();";
 
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC_URL = (process.env.PUBLIC_URL || 'http://localhost:' + PORT).replace(/\/+$/, '');
@@ -419,6 +422,12 @@ const server = http.createServer(async (req, res) => {
       const loc = String(b.location || 'ext').slice(0, 20); let n = 0;
       for (const r of (Array.isArray(b.results) ? b.results : []).slice(0, 100)) { const c = db().clients.find((x) => !x.archived && (x.sites || []).includes(r.url)); if (c) { UP.external(c.id, r.url, loc, !!r.ok, r.ms); n++; } }
       UP.flush(); return json(res, 200, { recorded: n });
+    }
+    if (p === '/site.js') { res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=86400', 'Access-Control-Allow-Origin': '*' }); return res.end(SITE_JS); }
+    if ((mm = p.match(/^\/pause\/([A-Za-z0-9_-]{6,64})$/)) && (m === 'GET' || m === 'HEAD')) {
+      const c = db().clients.find((x) => x.key === mm[1]); const name = c ? c.name : 'Site';
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=300', 'Access-Control-Allow-Origin': '*', 'X-Robots-Tag': 'noindex' });
+      return res.end(PAUSE_TPL.replace(/\{\{lang\}\}/g, c && c.lang === 'pt' ? 'pt' : 'fr').replace(/\{\{name\}\}/g, esc(name)).replace(/\{\{color\}\}/g, c && c.color ? c.color : '#1d44d6'));
     }
     if (p === '/a.js') { res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=86400', 'Access-Control-Allow-Origin': '*' }); return res.end(ST.SCRIPT); }
     let ms;
