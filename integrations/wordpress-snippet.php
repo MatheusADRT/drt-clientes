@@ -15,6 +15,8 @@ if ( ! defined( 'DRT_BILLING_URL' ) ) {
 }
 
 function drt_billing_status() {
+	// administrador pode forçar uma nova consulta: /?drt_billing=refresh
+	if ( isset( $_GET['drt_billing'] ) && 'refresh' === $_GET['drt_billing'] && current_user_can( 'manage_options' ) ) { delete_transient( 'drt_billing_status' ); }
 	$cached = get_transient( 'drt_billing_status' );
 	if ( is_array( $cached ) ) { return $cached; }
 	$last = get_option( 'drt_billing_last', array( 'status' => 'active' ) );
