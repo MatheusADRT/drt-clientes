@@ -11,6 +11,7 @@ const path = require('path');
 const store = require('./lib/store');
 const B = require('./lib/billing');
 const { esc, logo, eur, fdate, page, card, PLAN, STATUS, memberNo } = require('./lib/ui');
+const ST = require('./lib/stats');
 
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC_URL = (process.env.PUBLIC_URL || 'http://localhost:' + PORT).replace(/\/+$/, '');
@@ -197,6 +198,7 @@ function clientPage(c, flash) {
 <p class="muted" style="margin:14px 0 6px;font-size:13px">Endereço que o site do cliente consulta:</p>
 <div class="copy"><input readonly value="${esc(statusUrl)}" onclick="this.select()"><a class="btn sm" href="/api/status/${c.key}" target="_blank">Testar</a></div></div>
 
+${statsBlock(c, 'pt')}
 <h2>Pagamentos</h2>
 ${pays.length ? `<div class="tbl"><table><tr><th>Data</th><th>Valor</th><th>Período</th><th>Forma</th><th>Ref.</th><th></th></tr>${pays.map((p) => `<tr><td>${fdate(p.date, 'pt')}</td><td>${eur(p.amount, 'pt')}</td><td>${fdate(p.from, 'pt')} → ${fdate(p.to, 'pt')}</td><td>${esc(p.method)}</td><td class="mono">${esc(p.ref)}</td>
 <td>${p.id === (pays[0] && pays[0].id) ? `<form method="post" action="/admin/c/${c.id}/undo/${p.id}" style="margin:0" onsubmit="return confirm('Desfazer este pagamento?')"><button class="btn sm danger">Desfazer</button></form>` : ''}</td></tr>`).join('')}</table></div>` : '<p class="muted">Nenhum pagamento registrado.</p>'}
@@ -242,6 +244,25 @@ const INCLUDED = {
   boutique: { fr: ['Hébergement des boutiques', 'Mises à jour hebdomadaires (WordPress, extensions)', 'Sauvegarde quotidienne et sécurité', '2 h de modifications par mois', 'Réponse sous 24 h'], pt: ['Hospedagem das lojas', 'Atualizações semanais (WordPress, plugins)', 'Backup diário e segurança', '2 h de alterações por mês', 'Resposta em até 24 h'] },
   systeme: { fr: ['Serveur et base de données', 'Corrections et compatibilité (iOS, Android, navigateurs)', 'Sauvegarde quotidienne et surveillance 24/7', '2 h d’évolutions par mois', 'Intervention le jour même en cas d’urgence'], pt: ['Servidor e banco de dados', 'Correções e compatibilidade (iOS, Android, navegadores)', 'Backup diário e monitoramento 24/7', '2 h de melhorias por mês', 'Atendimento no mesmo dia em urgência'] },
 };
+const SL = {
+  fr: { h: 'Votre site en chiffres', sub: 'Les 30 derniers jours · mesure anonyme, sans cookies', visitors: 'Visiteurs', pv: 'Pages vues', avg: 'Temps moyen', mobile: 'Sur mobile', vs: 'vs 30 jours précédents', ref: 'D’où viennent les visiteurs', pages: 'Pages les plus vues', peak: 'Heure de pointe', none: 'Les mesures commencent dès que le compteur est installé sur votre site.', direct: 'Direct' },
+  pt: { h: 'Seu site em números', sub: 'Últimos 30 dias · medição anônima, sem cookies', visitors: 'Visitantes', pv: 'Páginas vistas', avg: 'Tempo médio', mobile: 'No celular', vs: 'vs 30 dias anteriores', ref: 'De onde vêm os visitantes', pages: 'Páginas mais vistas', peak: 'Horário de pico', none: 'As medições começam assim que o contador for instalado no seu site.', direct: 'Direto' },
+};
+const fdur = (ms) => { const s = Math.round(ms / 1000); return s >= 60 ? Math.floor(s / 60) + ' min ' + String(s % 60).padStart(2, '0') + ' s' : s + ' s'; };
+function statsBlock(c, lang) {
+  const t = SL[lang] || SL.fr; const S = ST.summary(c.id, 30);
+  if (!S.hasData) return `<h2>${t.h}</h2><p class="muted">${t.none}</p>`;
+  const max = Math.max(1, ...S.series.map((x) => x[1]));
+  const W = 600, H = 120, bw = W / S.series.length;
+  const bars = S.series.map(([k, v], i) => `<rect x="${(i * bw + 1).toFixed(1)}" y="${(H - v / max * H).toFixed(1)}" width="${(bw - 2).toFixed(1)}" height="${(v / max * H).toFixed(1)}" rx="2" fill="${i === S.series.length - 1 ? 'var(--accent)' : 'rgba(127,160,255,.45)'}"><title>${fdate(k, lang)} · ${v}</title></rect>`).join('');
+  const delta = S.deltaVisitors == null ? '' : `<span class="${S.deltaVisitors >= 0 ? 's-ok' : 's-grace'}" style="font:600 12px/1 var(--mono)">${S.deltaVisitors >= 0 ? '+' : ''}${S.deltaVisitors} % <span class="muted">${t.vs}</span></span>`;
+  const list = (rows, label) => rows.length ? `<div><span class="lab">${label}</span><table style="margin-top:8px">${rows.map(([k, v]) => `<tr><td>${esc(k === 'Direct' ? t.direct : k)}</td><td style="text-align:right;font-variant-numeric:tabular-nums">${v}</td></tr>`).join('')}</table></div>` : '';
+  return `<h2>${t.h}</h2><p class="sub" style="margin-top:-8px">${t.sub}</p>
+<div class="stats" style="margin-top:0"><div class="stat"><span class="lab">${t.visitors}</span><b>${S.visitors}</b>${delta}</div><div class="stat"><span class="lab">${t.pv}</span><b>${S.pv}</b></div><div class="stat"><span class="lab">${t.avg}</span><b>${fdur(S.avgMs)}</b></div><div class="stat"><span class="lab">${t.mobile}</span><b>${S.mobilePct} %</b></div></div>
+<div class="panel" style="margin-top:12px"><span class="lab">${t.visitors}</span><svg viewBox="0 0 ${W} ${H}" width="100%" height="120" preserveAspectRatio="none" style="display:block;margin-top:10px">${bars}</svg><div class="row muted" style="justify-content:space-between;font:500 11px/1 var(--mono);margin-top:6px"><span>${fdate(S.series[0][0], lang)}</span><span>${t.peak}: ${String(S.peakHour).padStart(2, '0')}h</span><span>${fdate(S.series[S.series.length - 1][0], lang)}</span></div></div>
+<div class="two" style="margin-top:14px">${list(S.ref, t.ref)}${list(S.pages, t.pages)}</div>`;
+}
+
 function cardPage(c, lang) {
   const t = T[lang]; const s = st(c); const set = S();
   const pays = clientPayments(c).slice(0, 12);
@@ -256,6 +277,7 @@ ${card(c, s, lang)}
 ${s.status !== 'paused' ? `<h2>${t.pay}</h2>
 ${c.stripeLink ? `<div class="panel" style="margin-bottom:12px"><b>${t.stripe}</b><p class="muted" style="margin:6px 0 14px;font-size:14px">${t.stripeTxt}</p><a class="btn pri" href="${esc(c.stripeLink + (c.stripeLink.includes('?') ? '&' : '?') + 'client_reference_id=' + c.id + (c.email ? '&prefilled_email=' + encodeURIComponent(c.email) : ''))}" rel="noopener">${t.stripe} · ${eur(c.amount, lang)}</a></div>` : ''}
 ${set.iban ? `<div class="panel"><b>${t.transfer}</b><table style="margin-top:10px"><tr><th>${t.ben}</th><td>${esc(set.beneficiary)}</td></tr><tr><th>IBAN</th><td class="mono">${esc(set.iban)}</td></tr>${set.bic ? `<tr><th>BIC</th><td class="mono">${esc(set.bic)}</td></tr>` : ''}<tr><th>${t.amount}</th><td>${eur(c.amount, lang)}</td></tr><tr><th>${t.comm}</th><td class="mono" style="font-size:15px">${esc(ogm(c, s.due))}</td></tr></table><p class="muted" style="font-size:13px;margin:10px 0 0">${t.commTxt}</p></div>` : ''}` : ''}
+${statsBlock(c, lang)}
 <h2>${t.included}</h2><ul style="margin:0;padding-left:20px;color:var(--text-2)">${(INCLUDED[c.plan] || INCLUDED.site)[lang].map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
 <h2>${t.hist}</h2>${pays.length ? `<div class="tbl"><table><tr><th>Date</th><th>${t.amount}</th><th>${t.period}</th></tr>${pays.map((p) => `<tr><td>${fdate(p.date, lang)}</td><td>${eur(p.amount, lang)}</td><td>${fdate(p.from, lang)} → ${fdate(p.to, lang)}</td></tr>`).join('')}</table></div>` : `<p class="muted">${t.none}</p>`}
 ${wa ? `<h2>${t.help}</h2><a class="btn" href="${esc(wa)}" target="_blank" rel="noopener">${t.write}</a>` : ''}
@@ -301,6 +323,18 @@ const server = http.createServer(async (req, res) => {
   const p = u.pathname.replace(/\/+$/, '') || '/'; const m = req.method;
   try {
     if (p === '/api/health') return json(res, 200, { ok: true });
+    if (p === '/a.js') { res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=86400', 'Access-Control-Allow-Origin': '*' }); return res.end(ST.SCRIPT); }
+    let ms;
+    if ((ms = p.match(/^\/api\/(a|stats)\/([A-Za-z0-9_-]{6,64})$/))) {
+      const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Content-Type' };
+      if (m === 'OPTIONS') { res.writeHead(204, { ...cors, 'Access-Control-Allow-Methods': 'POST' }); return res.end(); }
+      if (m !== 'POST') return json(res, 405, { error: 'POST' }, cors);
+      const c = db().clients.find((x) => x.key === ms[2] && !x.archived);
+      if (!c) { res.writeHead(204, cors); return res.end(); }
+      let b = {}; try { b = JSON.parse((await readBody(req, ms[1] === 'a' ? 2000 : 2e6)).toString('utf8') || '{}'); } catch (e) { b = {}; }
+      if (ms[1] === 'a') { ST.record(c.id, ip(req), String(req.headers['user-agent'] || ''), b); res.writeHead(204, cors); return res.end(); }
+      return json(res, 200, { days: ST.ingest(c.id, b.days) }, cors);
+    }
     if (p === '/favicon.svg') { res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=86400' }); return res.end(FAVICON); }
     if (p === '/robots.txt') { res.writeHead(200, { 'Content-Type': 'text/plain' }); return res.end('User-agent: *\nDisallow: /\n'); }
 
@@ -404,5 +438,5 @@ const server = http.createServer(async (req, res) => {
 
 setInterval(() => store.backup(), 6 * 3600000).unref(); setTimeout(() => store.backup(), 10000).unref();
 server.listen(PORT, () => console.log('[drt-clientes] no ar na porta ' + PORT + ' · ' + PUBLIC_URL));
-process.on('SIGTERM', () => { try { store.save(); } catch (e) { /* ok */ } process.exit(0); });
+process.on('SIGTERM', () => { try { store.save(); ST.flush(); } catch (e) { /* ok */ } process.exit(0); });
 module.exports = { server, stripeEvent, recordPayment };

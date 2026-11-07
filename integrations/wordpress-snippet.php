@@ -8,6 +8,7 @@
  *    (com uma faixa vermelha), e o painel, o login, a API e os pagamentos do WooCommerce seguem funcionando.
  *  - "warning": só administradores veem uma faixa de aviso (os clientes da loja não veem nada).
  *  - Se a central não responder, vale o último status; se nunca respondeu, o site fica NO AR.
+ *  - Carrega o contador de visitas da central (anônimo, sem cookies) em todas as páginas.
  */
 if ( ! defined( 'ABSPATH' ) ) { return; }
 if ( ! defined( 'DRT_BILLING_URL' ) ) {
@@ -89,6 +90,12 @@ add_action( 'template_redirect', function () {
 	echo str_replace( array( '{{lang}}', '{{name}}', '{{color}}' ), array( $lang, $name, DRT_BILLING_COLOR ), DRT_BILLING_PAGE );
 	exit;
 }, 0 );
+
+// contador de visitas da central (anônimo, sem cookies): mesma origem da chave de status
+add_action( 'wp_footer', function () {
+	if ( ! preg_match( '#^(https://[^/]+)/api/status/([A-Za-z0-9_-]+)$#', DRT_BILLING_URL, $m ) ) { return; }
+	echo '<script defer src="' . esc_url( $m[1] . '/a.js' ) . '" data-key="' . esc_attr( $m[2] ) . '"></script>';
+}, 99 );
 
 // administradores: aviso no painel e no site
 function drt_billing_notice_text( $s ) {
