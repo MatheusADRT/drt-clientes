@@ -12,6 +12,9 @@ const store = require('./lib/store');
 const B = require('./lib/billing');
 const { esc, logo, eur, fdate, page, card, PLAN, STATUS, memberNo } = require('./lib/ui');
 const ST = require('./lib/stats');
+const UP = require('./lib/uptime');
+const NT = require('./lib/notify');
+const RV = require('./lib/reviews');
 
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC_URL = (process.env.PUBLIC_URL || 'http://localhost:' + PORT).replace(/\/+$/, '');
@@ -100,6 +103,8 @@ function cleanClient(f, c) {
   c.graceDays = f.graceDays === '' || f.graceDays == null ? null : Math.max(0, Math.min(30, parseInt(f.graceDays, 10) || 0));
   if (c.graceDays === null) delete c.graceDays;
   c.notes = String(f.notes || '').slice(0, 2000);
+  c.googlePlaceId = /^[A-Za-z0-9_-]{10,200}$/.test(f.googlePlaceId || '') ? f.googlePlaceId : '';
+  c.stripeLinkYear = /^https:\/\/(buy|checkout)\.stripe\.com\/[^\s"'<>]+$/.test(f.stripeLinkYear || '') ? f.stripeLinkYear : '';
   return c;
 }
 
@@ -162,7 +167,9 @@ ${isNew ? `<label>Primeiro vencimento<input name="firstDue" type="date" required
 <label>Sites do cliente<textarea name="sites" rows="3" placeholder="https://www.agitosushi.com">${esc((c.sites || []).join('\n'))}</textarea><small>Um por linha. Só para referência; o bloqueio é feito pela chave de status.</small></label>
 <div class="two"><label>Cor da carteirinha<input name="color" type="color" value="${v('color', '#1d44d6')}" style="height:46px;padding:4px"></label>
 <label>Logo (URL https, opcional)<input name="logo" value="${v('logo')}" placeholder="https://.../logo.png"></label>
-<label>Link de pagamento Stripe (opcional)<input name="stripeLink" value="${v('stripeLink')}" placeholder="https://buy.stripe.com/..."><small>Aparece como botão "Pagar" na carteirinha.</small></label></div>
+<label>Link de pagamento Stripe (opcional)<input name="stripeLink" value="${v('stripeLink')}" placeholder="https://buy.stripe.com/..."><small>Aparece como botão "Pagar" na carteirinha.</small></label>
+<label>Link Stripe anual (opcional)<input name="stripeLinkYear" value="${v('stripeLinkYear')}" placeholder="https://buy.stripe.com/..."><small>Pagamento de 12 meses (o cliente ganha 2).</small></label>
+<label>Google Place ID (opcional)<input name="googlePlaceId" value="${v('googlePlaceId')}" placeholder="ChIJ..."><small>Para mostrar a nota e as avaliações do Google na carteirinha.</small></label></div>
 <label>Notas internas<textarea name="notes" rows="3">${esc(c.notes || '')}</textarea></label>
 <div class="row"><button class="btn pri">${isNew ? 'Cadastrar cliente' : 'Salvar alterações'}</button><a class="btn" href="${isNew ? '/admin' : '/admin/c/' + c.id}">Cancelar</a></div></form>`;
 }
@@ -178,7 +185,7 @@ function clientPage(c, flash) {
 <div>${card(c, s, 'pt')}<div class="card-meta"><span class="s-${s.status}">${esc(STXT(s))}</span><span class="muted mono">pago até ${fdate(c.paidUntil, 'pt')}</span></div></div>
 <div class="panel"><span class="lab">Registrar pagamento</span>
 <form class="f" method="post" action="/admin/c/${c.id}/pay" style="margin-top:12px"><div class="two">
-<label>Meses<select name="months">${[1, 2, 3, 6, 12].map((m) => `<option value="${m}">${m} ${m > 1 ? 'meses' : 'mês'} · ${eur(c.amount * m, 'pt')}</option>`).join('')}</select></label>
+<label>Meses<select name="months">${[1, 2, 3, 6].map((m) => `<option value="${m}">${m} ${m > 1 ? 'meses' : 'mês'} · ${eur(c.amount * m, 'pt')}</option>`).join('')}<option value="12">Anual: 12 meses pagos + 2 grátis · ${eur(c.amount * 12, 'pt')}</option></select></label>
 <label>Forma<select name="method"><option value="virement">Transferência</option><option value="especes">Dinheiro</option><option value="stripe">Stripe (manual)</option><option value="autre">Outra</option></select></label>
 <label>Valor recebido (€)<input name="amount" inputmode="decimal" placeholder="automático"></label>
 <label>Data<input name="date" type="date" value="${B.today()}"></label></div>
@@ -198,7 +205,10 @@ function clientPage(c, flash) {
 <p class="muted" style="margin:14px 0 6px;font-size:13px">Endereço que o site do cliente consulta:</p>
 <div class="copy"><input readonly value="${esc(statusUrl)}" onclick="this.select()"><a class="btn sm" href="/api/status/${c.key}" target="_blank">Testar</a></div></div>
 
+${uptimeBlock(c, 'pt')}
+${bizBlock(c, 'pt')}
 ${statsBlock(c, 'pt')}
+${reviewsBlock(c, 'pt')}
 <h2>Pagamentos</h2>
 ${pays.length ? `<div class="tbl"><table><tr><th>Data</th><th>Valor</th><th>Período</th><th>Forma</th><th>Ref.</th><th></th></tr>${pays.map((p) => `<tr><td>${fdate(p.date, 'pt')}</td><td>${eur(p.amount, 'pt')}</td><td>${fdate(p.from, 'pt')} → ${fdate(p.to, 'pt')}</td><td>${esc(p.method)}</td><td class="mono">${esc(p.ref)}</td>
 <td>${p.id === (pays[0] && pays[0].id) ? `<form method="post" action="/admin/c/${c.id}/undo/${p.id}" style="margin:0" onsubmit="return confirm('Desfazer este pagamento?')"><button class="btn sm danger">Desfazer</button></form>` : ''}</td></tr>`).join('')}</table></div>` : '<p class="muted">Nenhum pagamento registrado.</p>'}
@@ -221,6 +231,14 @@ function settingsPage(flash) {
 <label>BIC<input name="bic" value="${esc(s.bic)}"></label></div>
 <div class="two"><label>WhatsApp de contato<input name="whatsapp" value="${esc(s.whatsapp)}"></label><label>E-mail de contato<input name="email" type="email" value="${esc(s.email)}"></label></div>
 <button class="btn pri">Salvar</button></form></div>
+<h2>Automático</h2><div class="panel"><table>
+<tr><th>Monitoramento</th><td>A cada 5 min, o primeiro endereço de cada cliente. Alerta para você por ${NT.waOn() && process.env.ADMIN_PHONE ? 'WhatsApp' : ''}${NT.mailOn() && process.env.ADMIN_EMAIL ? (NT.waOn() && process.env.ADMIN_PHONE ? ' e ' : '') + 'e-mail' : ''}${!(NT.waOn() && process.env.ADMIN_PHONE) && !(NT.mailOn() && process.env.ADMIN_EMAIL) ? '<span class="s-grace">nenhum canal configurado</span>' : ''}.</td></tr>
+<tr><th>Lembretes</th><td>Todo dia às 09:00: ${s.reminderDays} dias antes do vencimento, no dia, e no dia da suspensão.</td></tr>
+<tr><th>Relatório mensal</th><td>Todo dia 1 às 09:00, com os números do mês anterior.</td></tr>
+<tr><th>WhatsApp automático</th><td>${NT.waOn() ? '<span class="s-ok">ligado</span> (API oficial da Meta)' : '<span class="muted">desligado</span> · defina WA_TOKEN, WA_PHONE_ID e os modelos WA_TPL_REMINDER / WA_TPL_REPORT / WA_TPL_ALERT'}</td></tr>
+<tr><th>E-mail automático</th><td>${NT.mailOn() ? '<span class="s-ok">ligado</span> (' + esc(process.env.MAIL_FROM) + ')' : '<span class="muted">desligado</span> · defina RESEND_API_KEY e MAIL_FROM'}</td></tr>
+<tr><th>Avaliações Google</th><td>${RV.on() ? '<span class="s-ok">ligado</span>' : '<span class="muted">desligado</span> · defina GOOGLE_PLACES_KEY e o Place ID em cada cliente'}</td></tr></table>
+<form method="post" action="/admin/run" class="row" style="margin-top:14px"><button class="btn sm" name="job" value="monitor">Testar os sites agora</button><button class="btn sm" name="job" value="reminders">Rodar lembretes de hoje</button><button class="btn sm" name="job" value="reviews">Atualizar notas Google</button></form></div>
 <h2>Integração Stripe</h2><div class="panel"><p style="margin:0">Webhook: <code>${esc(PUBLIC_URL)}/api/stripe/webhook</code> · ${STRIPE_WH ? '<span class="s-ok">ativo</span>' : '<span class="muted">desligado (defina STRIPE_WEBHOOK_SECRET no Render quando tiver a conta Stripe profissional)</span>'}</p>
 <p class="muted" style="font-size:13px;margin:10px 0 0">Eventos: <code>checkout.session.completed</code> e <code>invoice.paid</code>. Em cada cliente, cole o link de pagamento do Stripe; o pagamento é ligado ao cliente automaticamente.</p></div>
 <h2>Últimos eventos</h2><div class="tbl"><table>${db().events.slice(0, 30).map((e) => { const c = byId(e.clientId); return `<tr><td class="mono muted">${esc(e.at.slice(0, 16).replace('T', ' '))}</td><td>${c ? esc(c.name) : ''}</td><td>${esc(e.text)}</td></tr>`; }).join('') || '<tr><td class="muted">Nada ainda.</td></tr>'}</table></div>`;
@@ -245,8 +263,16 @@ const INCLUDED = {
   systeme: { fr: ['Serveur et base de données', 'Corrections et compatibilité (iOS, Android, navigateurs)', 'Sauvegarde quotidienne et surveillance 24/7', '2 h d’évolutions par mois', 'Intervention le jour même en cas d’urgence'], pt: ['Servidor e banco de dados', 'Correções e compatibilidade (iOS, Android, navegadores)', 'Backup diário e monitoramento 24/7', '2 h de melhorias por mês', 'Atendimento no mesmo dia em urgência'] },
 };
 const SL = {
-  fr: { h: 'Votre site en chiffres', sub: 'Les 30 derniers jours · mesure anonyme, sans cookies', visitors: 'Visiteurs', pv: 'Pages vues', avg: 'Temps moyen', mobile: 'Sur mobile', vs: 'vs 30 jours précédents', ref: 'D’où viennent les visiteurs', pages: 'Pages les plus vues', peak: 'Heure de pointe', none: 'Les mesures commencent dès que le compteur est installé sur votre site.', direct: 'Direct' },
-  pt: { h: 'Seu site em números', sub: 'Últimos 30 dias · medição anônima, sem cookies', visitors: 'Visitantes', pv: 'Páginas vistas', avg: 'Tempo médio', mobile: 'No celular', vs: 'vs 30 dias anteriores', ref: 'De onde vêm os visitantes', pages: 'Páginas mais vistas', peak: 'Horário de pico', none: 'As medições começam assim que o contador for instalado no seu site.', direct: 'Direto' },
+  fr: { h: 'Votre site en chiffres', sub: 'Les 30 derniers jours · mesure anonyme, sans cookies', visitors: 'Visiteurs', pv: 'Pages vues', avg: 'Temps moyen', mobile: 'Sur mobile', vs: 'vs 30 jours précédents', ref: 'D’où viennent les visiteurs', pages: 'Pages les plus vues', peak: 'Heure de pointe', none: 'Les mesures commencent dès que le compteur est installé sur votre site.', direct: 'Direct',
+    up: 'Disponibilité du site', upSub: 'Testé toutes les 5 minutes', online: 'En ligne', offline: 'Hors ligne', uptime: 'Disponibilité 30 j', resp: 'Temps de réponse', upFor: 'En ligne depuis', days: 'jours', incidents: 'Incidents 30 j', upNone: 'La surveillance démarre dès l’activation.',
+    biz: 'Votre activité', orders: 'Commandes', revenue: 'Chiffre d’affaires', ticket: 'Panier moyen', bookings: 'Réservations',
+    gr: 'Vos avis Google', grCount: 'avis', grNew: 'nouveaux ce mois-ci', grAsk: 'Demander un avis', grTxt: 'Envoyez ce lien à vos clients : il ouvre directement la fenêtre pour laisser un avis.',
+    year: 'Formule annuelle', yearTxt: 'Payez 12 mois d’un coup et recevez 14 mois de service : 2 mois offerts.', yearPay: 'Payer l’année' },
+  pt: { h: 'Seu site em números', sub: 'Últimos 30 dias · medição anônima, sem cookies', visitors: 'Visitantes', pv: 'Páginas vistas', avg: 'Tempo médio', mobile: 'No celular', vs: 'vs 30 dias anteriores', ref: 'De onde vêm os visitantes', pages: 'Páginas mais vistas', peak: 'Horário de pico', none: 'As medições começam assim que o contador for instalado no seu site.', direct: 'Direto',
+    up: 'Disponibilidade do site', upSub: 'Testado a cada 5 minutos', online: 'No ar', offline: 'Fora do ar', uptime: 'Disponibilidade 30 d', resp: 'Tempo de resposta', upFor: 'No ar há', days: 'dias', incidents: 'Incidentes 30 d', upNone: 'O monitoramento começa assim que for ativado.',
+    biz: 'Seu negócio', orders: 'Pedidos', revenue: 'Faturamento', ticket: 'Ticket médio', bookings: 'Agendamentos',
+    gr: 'Suas avaliações no Google', grCount: 'avaliações', grNew: 'novas este mês', grAsk: 'Pedir uma avaliação', grTxt: 'Mande este link aos seus clientes: ele abre direto a janela para deixar a avaliação.',
+    year: 'Plano anual', yearTxt: 'Pague 12 meses de uma vez e receba 14 meses de serviço: 2 meses grátis.', yearPay: 'Pagar o ano' },
 };
 const fdur = (ms) => { const s = Math.round(ms / 1000); return s >= 60 ? Math.floor(s / 60) + ' min ' + String(s % 60).padStart(2, '0') + ' s' : s + ' s'; };
 function statsBlock(c, lang) {
@@ -263,6 +289,33 @@ function statsBlock(c, lang) {
 <div class="two" style="margin-top:14px">${list(S.ref, t.ref)}${list(S.pages, t.pages)}</div>`;
 }
 
+const pct = (d) => d == null ? '' : `<span class="${d >= 0 ? 's-ok' : 's-grace'}" style="font:600 12px/1 var(--mono)">${d >= 0 ? '+' : ''}${d} %</span>`;
+function uptimeBlock(c, lang) {
+  const t = SL[lang] || SL.fr; if (!(c.sites || [])[0]) return '';
+  const U = UP.summary(c.id, 30);
+  if (!U.hasData) return `<h2>${t.up}</h2><p class="muted">${t.upNone}</p>`;
+  return `<h2>${t.up}</h2><p class="sub" style="margin-top:-8px">${t.upSub} · ${esc((c.sites || [])[0].replace(/^https?:\/\//, ''))}</p>
+<div class="stats" style="margin-top:0"><div class="stat"><span class="lab">${U.down ? t.offline : t.online}</span><b class="${U.down ? 's-suspended' : 's-ok'}" style="font-size:20px">${U.down ? '●' : '●'} ${U.down ? t.offline : t.online}</b></div><div class="stat"><span class="lab">${t.uptime}</span><b>${U.uptimePct != null ? U.uptimePct + ' %' : '—'}</b></div><div class="stat"><span class="lab">${t.resp}</span><b>${U.avgMs != null ? (U.avgMs / 1000).toFixed(2).replace('.', lang === 'pt' ? ',' : ',') + ' s' : '—'}</b></div><div class="stat"><span class="lab">${U.down ? t.incidents : t.upFor}</span><b>${U.down ? U.incidents30 : U.upDays + ' ' + t.days}</b></div></div>`;
+}
+function bizBlock(c, lang) {
+  const t = SL[lang] || SL.fr; const K = ST.kpiSummary(c.id, 30); if (!K) return '';
+  const tiles = [];
+  if (K.orders || K.revenue) { tiles.push(`<div class="stat"><span class="lab">${t.orders}</span><b>${K.orders}</b>${pct(K.deltaOrders)}</div>`); tiles.push(`<div class="stat"><span class="lab">${t.revenue}</span><b>${eur(K.revenue, lang)}</b>${pct(K.deltaRevenue)}</div>`); tiles.push(`<div class="stat"><span class="lab">${t.ticket}</span><b>${eur(K.avgTicket, lang)}</b></div>`); }
+  if (K.bookings) tiles.push(`<div class="stat"><span class="lab">${t.bookings}</span><b>${K.bookings}</b>${pct(K.deltaBookings)}</div>`);
+  return `<h2>${t.biz}</h2><p class="sub" style="margin-top:-8px">${t.sub.split('·')[0].trim()}</p><div class="stats" style="margin-top:0">${tiles.join('')}</div>`;
+}
+function reviewsBlock(c, lang) {
+  const t = SL[lang] || SL.fr; const R = RV.summary(c); if (!R) return '';
+  const stars = '★'.repeat(Math.round(R.rating)) + '☆'.repeat(5 - Math.round(R.rating));
+  return `<h2>${t.gr}</h2><div class="panel"><div class="row" style="gap:16px;align-items:baseline"><b style="font:800 40px/1 var(--body);letter-spacing:-.02em">${R.rating.toFixed(1).replace('.', ',')}</b><span class="s-soon" style="font-size:20px;letter-spacing:2px">${stars}</span><span class="muted">${R.count} ${t.grCount}${R.newCount ? ` · <span class="s-ok">+${R.newCount} ${t.grNew}</span>` : ''}</span></div>
+<p class="muted" style="font-size:14px;margin:14px 0 10px">${t.grTxt}</p><div class="copy"><input readonly value="${esc(R.writeUrl)}" onclick="this.select()"><a class="btn sm" href="https://wa.me/?text=${encodeURIComponent((lang === 'fr' ? 'Merci pour votre visite ! Un petit avis nous aide beaucoup : ' : 'Obrigado pela visita! Uma avaliação nos ajuda muito: ') + R.writeUrl)}" target="_blank" rel="noopener">${t.grAsk}</a></div></div>`;
+}
+function annualBlock(c, lang, set) {
+  const t = SL[lang] || SL.fr; const total = c.amount * 12;
+  return `<div class="panel" style="margin-top:12px;border-color:rgba(127,160,255,.35)"><b>${t.year}</b><p class="muted" style="margin:6px 0 10px;font-size:14px">${t.yearTxt}</p><div class="row"><b style="font-size:20px">${eur(total, lang)}</b><span class="muted">= 14 × ${eur(Math.round(total / 14), lang)}</span></div>
+${c.stripeLinkYear ? `<a class="btn pri" style="margin-top:12px" href="${esc(c.stripeLinkYear + (c.stripeLinkYear.includes('?') ? '&' : '?') + 'client_reference_id=' + c.id)}" rel="noopener">${t.yearPay}</a>` : ''}</div>`;
+}
+
 function cardPage(c, lang) {
   const t = T[lang]; const s = st(c); const set = S();
   const pays = clientPayments(c).slice(0, 12);
@@ -276,8 +329,11 @@ ${card(c, s, lang)}
 <div class="two" style="margin-top:14px"><div><span class="lab">${t.due}</span><div style="font-weight:700;margin-top:6px">${fdate(s.due, lang, 1)}</div></div><div><span class="lab">${t.paid}</span><div style="font-weight:700;margin-top:6px">${fdate(c.paidUntil, lang, 1)}</div></div><div><span class="lab">${t.amount}</span><div style="font-weight:700;margin-top:6px">${eur(c.amount, lang)}</div></div></div></div>
 ${s.status !== 'paused' ? `<h2>${t.pay}</h2>
 ${c.stripeLink ? `<div class="panel" style="margin-bottom:12px"><b>${t.stripe}</b><p class="muted" style="margin:6px 0 14px;font-size:14px">${t.stripeTxt}</p><a class="btn pri" href="${esc(c.stripeLink + (c.stripeLink.includes('?') ? '&' : '?') + 'client_reference_id=' + c.id + (c.email ? '&prefilled_email=' + encodeURIComponent(c.email) : ''))}" rel="noopener">${t.stripe} · ${eur(c.amount, lang)}</a></div>` : ''}
-${set.iban ? `<div class="panel"><b>${t.transfer}</b><table style="margin-top:10px"><tr><th>${t.ben}</th><td>${esc(set.beneficiary)}</td></tr><tr><th>IBAN</th><td class="mono">${esc(set.iban)}</td></tr>${set.bic ? `<tr><th>BIC</th><td class="mono">${esc(set.bic)}</td></tr>` : ''}<tr><th>${t.amount}</th><td>${eur(c.amount, lang)}</td></tr><tr><th>${t.comm}</th><td class="mono" style="font-size:15px">${esc(ogm(c, s.due))}</td></tr></table><p class="muted" style="font-size:13px;margin:10px 0 0">${t.commTxt}</p></div>` : ''}` : ''}
+${set.iban ? `<div class="panel"><b>${t.transfer}</b><table style="margin-top:10px"><tr><th>${t.ben}</th><td>${esc(set.beneficiary)}</td></tr><tr><th>IBAN</th><td class="mono">${esc(set.iban)}</td></tr>${set.bic ? `<tr><th>BIC</th><td class="mono">${esc(set.bic)}</td></tr>` : ''}<tr><th>${t.amount}</th><td>${eur(c.amount, lang)}</td></tr><tr><th>${t.comm}</th><td class="mono" style="font-size:15px">${esc(ogm(c, s.due))}</td></tr></table><p class="muted" style="font-size:13px;margin:10px 0 0">${t.commTxt}</p></div>` : ''}${annualBlock(c, lang, set)}` : ''}
+${uptimeBlock(c, lang)}
+${bizBlock(c, lang)}
 ${statsBlock(c, lang)}
+${reviewsBlock(c, lang)}
 <h2>${t.included}</h2><ul style="margin:0;padding-left:20px;color:var(--text-2)">${(INCLUDED[c.plan] || INCLUDED.site)[lang].map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
 <h2>${t.hist}</h2>${pays.length ? `<div class="tbl"><table><tr><th>Date</th><th>${t.amount}</th><th>${t.period}</th></tr>${pays.map((p) => `<tr><td>${fdate(p.date, lang)}</td><td>${eur(p.amount, lang)}</td><td>${fdate(p.from, lang)} → ${fdate(p.to, lang)}</td></tr>`).join('')}</table></div>` : `<p class="muted">${t.none}</p>`}
 ${wa ? `<h2>${t.help}</h2><a class="btn" href="${esc(wa)}" target="_blank" rel="noopener">${t.write}</a>` : ''}
@@ -333,7 +389,7 @@ const server = http.createServer(async (req, res) => {
       if (!c) { res.writeHead(204, cors); return res.end(); }
       let b = {}; try { b = JSON.parse((await readBody(req, ms[1] === 'a' ? 2000 : 2e6)).toString('utf8') || '{}'); } catch (e) { b = {}; }
       if (ms[1] === 'a') { ST.record(c.id, ip(req), String(req.headers['user-agent'] || ''), b); res.writeHead(204, cors); return res.end(); }
-      return json(res, 200, { days: ST.ingest(c.id, b.days) }, cors);
+      return json(res, 200, { days: ST.ingest(c.id, b.days), kpis: ST.ingestKpis(c.id, b.kpis) }, cors);
     }
     if (p === '/favicon.svg') { res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=86400' }); return res.end(FAVICON); }
     if (p === '/robots.txt') { res.writeHead(200, { 'Content-Type': 'text/plain' }); return res.end('User-agent: *\nDisallow: /\n'); }
@@ -396,6 +452,14 @@ const server = http.createServer(async (req, res) => {
       return redirect(res, '/admin/c/' + c.id + '?ok=' + encodeURIComponent('Cliente cadastrado. Envie o link da carteirinha para ele.'));
     }
     if (p === '/admin/settings' && m === 'GET') return html(res, 200, settingsPage(flash));
+    if (p === '/admin/run' && m === 'POST') {
+      const f = form(await readBody(req)); const SCH2 = require('./lib/scheduler');
+      let msg = '';
+      if (f.job === 'monitor') { await SCH2.monitor(); msg = 'Sites testados.'; }
+      else if (f.job === 'reminders') { msg = (await SCH2.reminders()) + ' lembrete(s) enviado(s).'; }
+      else if (f.job === 'reviews') { await SCH2.reviews(); msg = 'Notas atualizadas.'; }
+      return redirect(res, '/admin/settings?ok=' + encodeURIComponent(msg));
+    }
     if (p === '/admin/settings' && m === 'POST') {
       const f = form(await readBody(req)); const s = S();
       s.graceDays = Math.max(0, Math.min(30, parseInt(f.graceDays, 10) || 0));
@@ -416,7 +480,8 @@ const server = http.createServer(async (req, res) => {
       if (!act) { cleanClient(f, c); store.log('client', c.id, 'Dados atualizados'); store.save(); return redirect(res, '/admin/c/' + c.id + '?ok=Salvo'); }
       if (act === 'pay') {
         const amount = f.amount ? Math.round(parseFloat(String(f.amount).replace(',', '.')) * 100) : null;
-        const p2 = recordPayment(c, { months: f.months, amount: Number.isFinite(amount) ? amount : null, method: f.method || 'virement', ref: f.ref, date: /^\d{4}-\d{2}-\d{2}$/.test(f.date || '') ? f.date : undefined });
+        const annual = String(f.months) === '12'; // anual: paga 12, ganha 2
+        const p2 = recordPayment(c, { months: annual ? 14 : f.months, amount: Number.isFinite(amount) ? amount : (annual ? c.amount * 12 : null), method: f.method || 'virement', ref: f.ref, date: /^\d{4}-\d{2}-\d{2}$/.test(f.date || '') ? f.date : undefined, note: annual ? 'anual (12 + 2 meses)' : '' });
         const back = (req.headers.referer || '').includes('/admin/c/') ? '/admin/c/' + c.id : '/admin';
         return redirect(res, back + '?ok=' + encodeURIComponent(`${c.name}: pago até ${fdate(p2.to, 'pt', 1)}.`));
       }
@@ -437,6 +502,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 setInterval(() => store.backup(), 6 * 3600000).unref(); setTimeout(() => store.backup(), 10000).unref();
+const SCH = require('./lib/scheduler'); if (process.env.NODE_ENV !== 'test') SCH.start();
 server.listen(PORT, () => console.log('[drt-clientes] no ar na porta ' + PORT + ' · ' + PUBLIC_URL));
 process.on('SIGTERM', () => { try { store.save(); ST.flush(); } catch (e) { /* ok */ } process.exit(0); });
 module.exports = { server, stripeEvent, recordPayment };

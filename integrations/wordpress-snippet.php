@@ -97,6 +97,23 @@ add_action( 'wp_footer', function () {
 	echo '<script defer src="' . esc_url( $m[1] . '/a.js' ) . '" data-key="' . esc_attr( $m[2] ) . '"></script>';
 }, 99 );
 
+// WooCommerce: uma vez por dia, manda à central os pedidos pagos e o faturamento dos últimos 35 dias (só totais por dia)
+add_action( 'init', function () {
+	if ( ! function_exists( 'wc_get_orders' ) ) { return; }
+	if ( get_transient( 'drt_billing_kpis_sent' ) ) { return; }
+	set_transient( 'drt_billing_kpis_sent', 1, DAY_IN_SECONDS );
+	if ( ! preg_match( '#^(https://[^/]+)/api/status/([A-Za-z0-9_-]+)$#', DRT_BILLING_URL, $m ) ) { return; }
+	$orders = wc_get_orders( array( 'limit' => 2000, 'status' => array( 'wc-processing', 'wc-completed' ), 'date_paid' => '>' . ( time() - 35 * DAY_IN_SECONDS ), 'return' => 'objects' ) );
+	$kpis = array();
+	foreach ( $orders as $o ) {
+		$d = $o->get_date_paid() ? $o->get_date_paid() : $o->get_date_created(); if ( ! $d ) { continue; }
+		$k = $d->date( 'Y-m-d' );
+		if ( ! isset( $kpis[ $k ] ) ) { $kpis[ $k ] = array( 'orders' => 0, 'revenue' => 0 ); }
+		$kpis[ $k ]['orders']++; $kpis[ $k ]['revenue'] += (int) round( (float) $o->get_total() * 100 );
+	}
+	wp_remote_post( $m[1] . '/api/stats/' . $m[2], array( 'timeout' => 8, 'blocking' => false, 'headers' => array( 'Content-Type' => 'application/json' ), 'body' => wp_json_encode( array( 'kpis' => $kpis ) ) ) );
+} );
+
 // administradores: aviso no painel e no site
 function drt_billing_notice_text( $s ) {
 	if ( 'suspended' === $s['status'] ) { return 'Site suspendu pour mensualité impayée : les visiteurs ne voient plus le site. Contactez DRT Creation.'; }
