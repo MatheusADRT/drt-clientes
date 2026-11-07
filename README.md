@@ -19,7 +19,7 @@ Testes: `npm test`.
 - **Monitoramento**: a cada 5 min testa o primeiro endereço de cada cliente; alerta você quando cai e quando volta. Na carteirinha: no ar/fora, disponibilidade 30 d, tempo de resposta, "no ar há N dias".
 - **Lembretes**: 09:00 Bruxelas, N dias antes do vencimento, no dia, e no dia da suspensão (uma vez cada).
 - **Relatório mensal**: dia 1 às 09:00, com visitantes, origem, tempo médio, disponibilidade, pedidos/faturamento e nota Google.
-- **Plano anual**: 12 meses pagos = 14 meses de serviço (no painel, "Anual"; na carteirinha, bloco "Formule annuelle").
+- **Plano anual**: paga 10 meses, ganha 12 meses de serviço (no painel, "Anual"; na carteirinha, bloco "Formule annuelle").
 - **Números do negócio**: pedidos e faturamento por dia (Agito manda sozinho; WooCommerce manda pelo snippet).
 - **Avaliações Google**: nota, total e novas no mês + link "Demander un avis".
 

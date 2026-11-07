@@ -56,14 +56,14 @@ test('lembretes, relatório, monitoramento e plano anual', async (t) => {
   assert.deepEqual(events, ['down', 'up']); const U = UP.summary(c.id); assert.equal(U.down, false); assert.equal(U.checks, 3); assert.equal(U.uptimePct, 33.33); assert.equal(U.sites.length, 1);
   // teste externo (outro local) entra na conta
   UP.external(c.id, c.sites[0], 'us', true, 300); assert.equal(UP.summary(c.id).extPct, 100); assert.deepEqual(UP.summary(c.id).extLocs, ['us']);
-  // plano anual: 12 pagos = 14 meses, valor 12 × mensalidade
+  // plano anual: paga 10, ganha 12 meses
   const paidBefore = c.paidUntil;
   await fetch(base() + '/admin/c/' + id + '/pay', { method: 'POST', redirect: 'manual', headers: { cookie: ck }, body: new URLSearchParams({ months: '12', method: 'virement' }) });
   const pay = store.db.payments.find((p) => p.clientId === id);
-  assert.equal(pay.months, 14); assert.equal(pay.amount, 4000 * 12); assert.equal(c.paidUntil, B.addDays(B.addMonths(B.addDays(paidBefore, 1), 14, c.dueDay), -1));
+  assert.equal(pay.months, 12); assert.equal(pay.amount, 4000 * 10); assert.equal(c.paidUntil, B.addDays(B.addMonths(B.addDays(paidBefore, 1), 12, c.dueDay), -1));
   // carteirinha mostra disponibilidade, negócio e plano anual
   const html = await (await fetch(base() + '/c/' + c.token)).text();
-  assert.match(html, /Disponibilidade do site/); assert.match(html, /Plano anual/); assert.match(html, /480\s€/);
+  assert.match(html, /Disponibilidade do site/); assert.match(html, /Plano anual/); assert.match(html, /400\s€/);
 });
 
 test('backup: o arquivo baixado contém clientes, pagamentos, visitas e monitoramento', async () => {
@@ -81,7 +81,7 @@ test('banco: casa a transferência pela comunicação estruturada ou por nome + 
   const tx = (amount, text, from) => ({ id: 'x', attributes: { amount, remittanceInformation: text, counterpartName: from } });
   assert.equal(BANK.match(tx('40.00', '+++000/2261/10030+++', 'ITF GROUP SRL'), clients, ogmFor).client.id, 'b');
   assert.equal(BANK.match(tx('40.00', '000126120006', 'X'), clients, ogmFor).client.id, 'a');
-  assert.equal(BANK.match(tx('480.00', 'Big Festa maintenance annuelle', 'ITF'), clients, ogmFor).client.id, 'b');
+  assert.equal(BANK.match(tx('400.00', 'Big Festa maintenance annuelle', 'ITF'), clients, ogmFor).client.id, 'b');
   assert.equal(BANK.match(tx('40.00', 'loyer', 'Someone'), clients, ogmFor), null);
   assert.equal(BANK.match(tx('-40.00', '+++000/2261/10030+++', 'x'), clients, ogmFor), null);
 });

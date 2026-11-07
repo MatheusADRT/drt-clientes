@@ -80,7 +80,7 @@ function ogm(c, due) {
   return `+++${d.slice(0, 3)}/${d.slice(3, 7)}/${d.slice(7)}+++`;
 }
 function ogmsFor(c) { const s = st(c); return [ogm(c, s.due), ogm(c, B.addMonths(s.due, 1, c.dueDay)), ogm(c, B.addMonths(s.due, -1, c.dueDay))]; }
-async function bankSync() { return BANK.sync({ clients: db().clients.filter((c) => !c.archived), ogmFor: ogmsFor, record: (c, o) => { const m = o.months === 12 ? 14 : o.months; recordPayment(c, { ...o, months: m, note: (o.note || '') + (o.months === 12 ? ' · anual 12 + 2' : '') }); } }); }
+async function bankSync() { return BANK.sync({ clients: db().clients.filter((c) => !c.archived), ogmFor: ogmsFor, record: (c, o) => { const m = o.months === 12 ? 12 : o.months; recordPayment(c, { ...o, months: m, note: (o.note || '') + (o.months === 12 ? ' · anual 12 + 2' : '') }); } }); }
 function recordPayment(c, { months, amount, method, ref, date, note }) {
   months = Math.max(1, Math.min(24, Math.round(Number(months) || 1)));
   const per = B.applyPayment(c, months, c.dueDay);
@@ -192,7 +192,7 @@ function clientPage(c, flash) {
 <div>${card(c, s, 'pt')}<div class="card-meta"><span class="s-${s.status}">${esc(STXT(s))}</span><span class="muted mono">pago até ${fdate(c.paidUntil, 'pt')}</span></div></div>
 <div class="panel"><span class="lab">Registrar pagamento</span>
 <form class="f" method="post" action="/admin/c/${c.id}/pay" style="margin-top:12px"><div class="two">
-<label>Meses<select name="months">${[1, 2, 3, 6].map((m) => `<option value="${m}">${m} ${m > 1 ? 'meses' : 'mês'} · ${eur(c.amount * m, 'pt')}</option>`).join('')}<option value="12">Anual: 12 meses pagos + 2 grátis · ${eur(c.amount * 12, 'pt')}</option></select></label>
+<label>Meses<select name="months">${[1, 2, 3, 6].map((m) => `<option value="${m}">${m} ${m > 1 ? 'meses' : 'mês'} · ${eur(c.amount * m, 'pt')}</option>`).join('')}<option value="12">Anual: paga 10 meses, ganha 12 · ${eur(c.amount * 10, 'pt')}</option></select></label>
 <label>Forma<select name="method"><option value="virement">Transferência</option><option value="especes">Dinheiro</option><option value="stripe">Stripe (manual)</option><option value="autre">Outra</option></select></label>
 <label>Valor recebido (€)<input name="amount" inputmode="decimal" placeholder="automático"></label>
 <label>Data<input name="date" type="date" value="${B.today()}"></label></div>
@@ -282,12 +282,12 @@ const SL = {
     up: 'Disponibilité du site', upSub: 'Testé toutes les 5 minutes', online: 'En ligne', offline: 'Hors ligne', uptime: 'Disponibilité 30 j', resp: 'Temps de réponse', upFor: 'En ligne depuis', days: 'jours', incidents: 'Incidents 30 j', upNone: 'La surveillance démarre dès l’activation.',
     biz: 'Votre activité', orders: 'Commandes', revenue: 'Chiffre d’affaires', ticket: 'Panier moyen', bookings: 'Réservations',
     gr: 'Vos avis Google', grCount: 'avis', grNew: 'nouveaux ce mois-ci', grAsk: 'Demander un avis', grTxt: 'Envoyez ce lien à vos clients : il ouvre directement la fenêtre pour laisser un avis.',
-    year: 'Formule annuelle', yearTxt: 'Payez 12 mois d’un coup et recevez 14 mois de service : 2 mois offerts.', yearPay: 'Payer l’année', sumOk: 'Tout est en ordre', sumWarn: 'À régler', sumSusp: 'Service en pause', sumUp: 'site en ligne', sumDown: 'site hors ligne', sumPaid: 'payé jusqu’au', sumVis: 'visiteurs ces 30 jours', ordersChart: 'Commandes par jour', yoy: 'vs même période l’an dernier', fromLocs: 'Testé depuis l’Europe', fromLocsExt: 'et les États-Unis' },
+    year: 'Formule annuelle', yearTxt: 'Payez 10 mois d’un coup et recevez 12 mois de service : 2 mois offerts.', yearPay: 'Payer l’année', sumOk: 'Tout est en ordre', sumWarn: 'À régler', sumSusp: 'Service en pause', sumUp: 'site en ligne', sumDown: 'site hors ligne', sumPaid: 'payé jusqu’au', sumVis: 'visiteurs ces 30 jours', ordersChart: 'Commandes par jour', yoy: 'vs même période l’an dernier', fromLocs: 'Testé depuis l’Europe', fromLocsExt: 'et les États-Unis' },
   pt: { h: 'Seu site em números', sub: 'Últimos 30 dias · medição anônima, sem cookies', visitors: 'Visitantes', pv: 'Páginas vistas', avg: 'Tempo médio', mobile: 'No celular', vs: 'vs 30 dias anteriores', ref: 'De onde vêm os visitantes', pages: 'Páginas mais vistas', peak: 'Horário de pico', none: 'As medições começam assim que o contador for instalado no seu site.', direct: 'Direto',
     up: 'Disponibilidade do site', upSub: 'Testado a cada 5 minutos', online: 'No ar', offline: 'Fora do ar', uptime: 'Disponibilidade 30 d', resp: 'Tempo de resposta', upFor: 'No ar há', days: 'dias', incidents: 'Incidentes 30 d', upNone: 'O monitoramento começa assim que for ativado.',
     biz: 'Seu negócio', orders: 'Pedidos', revenue: 'Faturamento', ticket: 'Ticket médio', bookings: 'Agendamentos',
     gr: 'Suas avaliações no Google', grCount: 'avaliações', grNew: 'novas este mês', grAsk: 'Pedir uma avaliação', grTxt: 'Mande este link aos seus clientes: ele abre direto a janela para deixar a avaliação.',
-    year: 'Plano anual', yearTxt: 'Pague 12 meses de uma vez e receba 14 meses de serviço: 2 meses grátis.', yearPay: 'Pagar o ano', sumOk: 'Tudo em ordem', sumWarn: 'A regularizar', sumSusp: 'Serviço em pausa', sumUp: 'site no ar', sumDown: 'site fora do ar', sumPaid: 'pago até', sumVis: 'visitantes nos últimos 30 dias', ordersChart: 'Pedidos por dia', yoy: 'vs mesmo período do ano passado', fromLocs: 'Testado da Europa', fromLocsExt: 'e dos Estados Unidos' },
+    year: 'Plano anual', yearTxt: 'Pague 10 meses de uma vez e receba 12 meses de serviço: 2 meses grátis.', yearPay: 'Pagar o ano', sumOk: 'Tudo em ordem', sumWarn: 'A regularizar', sumSusp: 'Serviço em pausa', sumUp: 'site no ar', sumDown: 'site fora do ar', sumPaid: 'pago até', sumVis: 'visitantes nos últimos 30 dias', ordersChart: 'Pedidos por dia', yoy: 'vs mesmo período do ano passado', fromLocs: 'Testado da Europa', fromLocsExt: 'e dos Estados Unidos' },
 };
 const fdur = (ms) => { const s = Math.round(ms / 1000); return s >= 60 ? Math.floor(s / 60) + ' min ' + String(s % 60).padStart(2, '0') + ' s' : s + ' s'; };
 function statsBlock(c, lang) {
@@ -342,8 +342,8 @@ function reviewsBlock(c, lang) {
 <p class="muted" style="font-size:14px;margin:14px 0 10px">${t.grTxt}</p><div class="copy"><input readonly value="${esc(R.writeUrl)}" onclick="this.select()"><a class="btn sm" href="https://wa.me/?text=${encodeURIComponent((lang === 'fr' ? 'Merci pour votre visite ! Un petit avis nous aide beaucoup : ' : 'Obrigado pela visita! Uma avaliação nos ajuda muito: ') + R.writeUrl)}" target="_blank" rel="noopener">${t.grAsk}</a></div></div>`;
 }
 function annualBlock(c, lang, set) {
-  const t = SL[lang] || SL.fr; const total = c.amount * 12;
-  return `<div class="panel" style="margin-top:12px;border-color:rgba(127,160,255,.35)"><b>${t.year}</b><p class="muted" style="margin:6px 0 10px;font-size:14px">${t.yearTxt}</p><div class="row"><b style="font-size:20px">${eur(total, lang)}</b><span class="muted">= 14 × ${eur(Math.round(total / 14), lang)}</span></div>
+  const t = SL[lang] || SL.fr; const total = c.amount * 10;
+  return `<div class="panel" style="margin-top:12px;border-color:rgba(127,160,255,.35)"><b>${t.year}</b><p class="muted" style="margin:6px 0 10px;font-size:14px">${t.yearTxt}</p><div class="row"><b style="font-size:20px">${eur(total, lang)}</b><span class="muted">= 12 × ${eur(Math.round(total / 12), lang)}</span></div>
 ${c.stripeLinkYear ? `<a class="btn pri" style="margin-top:12px" href="${esc(c.stripeLinkYear + (c.stripeLinkYear.includes('?') ? '&' : '?') + 'client_reference_id=' + c.id)}" rel="noopener">${t.yearPay}</a>` : ''}</div>`;
 }
 
@@ -534,8 +534,8 @@ const server = http.createServer(async (req, res) => {
       if (!act) { cleanClient(f, c); store.log('client', c.id, 'Dados atualizados'); store.save(); return redirect(res, '/admin/c/' + c.id + '?ok=Salvo'); }
       if (act === 'pay') {
         const amount = f.amount ? Math.round(parseFloat(String(f.amount).replace(',', '.')) * 100) : null;
-        const annual = String(f.months) === '12'; // anual: paga 12, ganha 2
-        const p2 = recordPayment(c, { months: annual ? 14 : f.months, amount: Number.isFinite(amount) ? amount : (annual ? c.amount * 12 : null), method: f.method || 'virement', ref: f.ref, date: /^\d{4}-\d{2}-\d{2}$/.test(f.date || '') ? f.date : undefined, note: annual ? 'anual (12 + 2 meses)' : '' });
+        const annual = String(f.months) === '12'; // anual: paga 10, ganha 12
+        const p2 = recordPayment(c, { months: annual ? 12 : f.months, amount: Number.isFinite(amount) ? amount : (annual ? c.amount * 10 : null), method: f.method || 'virement', ref: f.ref, date: /^\d{4}-\d{2}-\d{2}$/.test(f.date || '') ? f.date : undefined, note: annual ? 'anual (12 + 2 meses)' : '' });
         const back = (req.headers.referer || '').includes('/admin/c/') ? '/admin/c/' + c.id : '/admin';
         return redirect(res, back + '?ok=' + encodeURIComponent(`${c.name}: pago até ${fdate(p2.to, 'pt', 1)}.`));
       }
