@@ -1,0 +1,9 @@
+{
+  "name": "drt-clientes",
+  "version": "1.0.0",
+  "private": true,
+  "description": "DRT Creation · central de clientes, carteirinhas e mensalidades",
+  "main": "server.js",
+  "scripts": { "start": "node server.js", "test": "node --test test/*.test.js" },
+  "engines": { "node": "22.x" }
+}

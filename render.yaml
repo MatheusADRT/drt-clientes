@@ -1,0 +1,26 @@
+# Blueprint do Render: central de clientes com disco permanente em /data (Frankfurt).
+services:
+  - type: web
+    name: drt-clientes
+    runtime: node
+    region: frankfurt
+    plan: starter            # precisa ficar sempre ligado e ter disco (o plano grátis dorme e apaga os dados)
+    branch: main
+    buildCommand: echo "sem dependências"
+    startCommand: node server.js
+    healthCheckPath: /api/health
+    disk:
+      name: clientes-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: DATA_DIR
+        value: /data
+      - key: PUBLIC_URL
+        value: https://drt-clientes.onrender.com
+      - key: ADMIN_PASSWORD
+        sync: false          # o Render pede a senha do painel na hora de criar
+      - key: APP_SECRET
+        generateValue: true
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false          # deixar vazio até ter a conta Stripe profissional
