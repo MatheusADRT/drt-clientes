@@ -16,6 +16,7 @@ const UP = require('./lib/uptime');
 const NT = require('./lib/notify');
 const RV = require('./lib/reviews');
 const BK = require('./lib/backup');
+const BANK = require('./lib/bank');
 
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC_URL = (process.env.PUBLIC_URL || 'http://localhost:' + PORT).replace(/\/+$/, '');
@@ -75,6 +76,8 @@ function ogm(c, due) {
   const d = base + String(chk).padStart(2, '0');
   return `+++${d.slice(0, 3)}/${d.slice(3, 7)}/${d.slice(7)}+++`;
 }
+function ogmsFor(c) { const s = st(c); return [ogm(c, s.due), ogm(c, B.addMonths(s.due, 1, c.dueDay)), ogm(c, B.addMonths(s.due, -1, c.dueDay))]; }
+async function bankSync() { return BANK.sync({ clients: db().clients.filter((c) => !c.archived), ogmFor: ogmsFor, record: (c, o) => { const m = o.months === 12 ? 14 : o.months; recordPayment(c, { ...o, months: m, note: (o.note || '') + (o.months === 12 ? ' · anual 12 + 2' : '') }); } }); }
 function recordPayment(c, { months, amount, method, ref, date, note }) {
   months = Math.max(1, Math.min(24, Math.round(Number(months) || 1)));
   const per = B.applyPayment(c, months, c.dueDay);
@@ -240,6 +243,9 @@ function settingsPage(flash) {
 <tr><th>E-mail automático</th><td>${NT.mailOn() ? '<span class="s-ok">ligado</span> (' + esc(process.env.MAIL_FROM) + ')' : '<span class="muted">desligado</span> · defina RESEND_API_KEY e MAIL_FROM'}</td></tr>
 <tr><th>Avaliações Google</th><td>${RV.on() ? '<span class="s-ok">ligado</span>' : '<span class="muted">desligado</span> · defina GOOGLE_PLACES_KEY e o Place ID em cada cliente'}</td></tr></table>
 <form method="post" action="/admin/run" class="row" style="margin-top:14px"><button class="btn sm" name="job" value="monitor">Testar os sites agora</button><button class="btn sm" name="job" value="reminders">Rodar lembretes de hoje</button><button class="btn sm" name="job" value="reviews">Atualizar notas Google</button></form></div>
+<h2>Banco (transferências)</h2><div class="panel"><p style="margin:0">${BANK.on() ? '<span class="s-ok">ligado</span> · a cada hora, as transferências recebidas com a comunicação estruturada do cliente viram pagamento sozinhas.' : '<span class="muted">desligado</span> · ligue a sua conta bancária no Ponto (myponto.com) e defina PONTO_CLIENT_ID, PONTO_CLIENT_SECRET e PONTO_ACCOUNT_ID.'}</p>
+${(db().bank && db().bank.unmatched || []).length ? `<p class="lab" style="margin:14px 0 6px">A conferir (não bateram com nenhum cliente)</p><div class="tbl"><table>${db().bank.unmatched.slice(0, 20).map((u) => `<tr><td>${esc(u.date)}</td><td>${eur(u.amount, 'pt')}</td><td>${esc(u.from)}</td><td class="mono">${esc(u.text)}</td></tr>`).join('')}</table></div>` : ''}
+<form method="post" action="/admin/run" class="row" style="margin-top:14px"><button class="btn sm" name="job" value="bank">Ler o banco agora</button></form></div>
 <h2>Cópia de segurança</h2><div class="panel"><table>
 <tr><th>Baixar agora</th><td><a class="btn sm" href="/admin/backup.json" download>Baixar backup (.json)</a> <span class="muted">— clientes, pagamentos, visitas e monitoramento. Guarde num lugar seu de vez em quando.</span></td></tr>
 <tr><th>GitHub (diário)</th><td>${process.env.GITHUB_BACKUP_REPO && process.env.GITHUB_TOKEN ? '<span class="s-ok">ligado</span> · ' + esc(process.env.GITHUB_BACKUP_REPO) : '<span class="muted">desligado</span> · defina GITHUB_BACKUP_REPO (ex.: MatheusADRT/drt-backups, privado) e GITHUB_TOKEN'}</td></tr>
@@ -273,12 +279,12 @@ const SL = {
     up: 'Disponibilité du site', upSub: 'Testé toutes les 5 minutes', online: 'En ligne', offline: 'Hors ligne', uptime: 'Disponibilité 30 j', resp: 'Temps de réponse', upFor: 'En ligne depuis', days: 'jours', incidents: 'Incidents 30 j', upNone: 'La surveillance démarre dès l’activation.',
     biz: 'Votre activité', orders: 'Commandes', revenue: 'Chiffre d’affaires', ticket: 'Panier moyen', bookings: 'Réservations',
     gr: 'Vos avis Google', grCount: 'avis', grNew: 'nouveaux ce mois-ci', grAsk: 'Demander un avis', grTxt: 'Envoyez ce lien à vos clients : il ouvre directement la fenêtre pour laisser un avis.',
-    year: 'Formule annuelle', yearTxt: 'Payez 12 mois d’un coup et recevez 14 mois de service : 2 mois offerts.', yearPay: 'Payer l’année' },
+    year: 'Formule annuelle', yearTxt: 'Payez 12 mois d’un coup et recevez 14 mois de service : 2 mois offerts.', yearPay: 'Payer l’année', sumOk: 'Tout est en ordre', sumWarn: 'À régler', sumSusp: 'Service en pause', sumUp: 'site en ligne', sumDown: 'site hors ligne', sumPaid: 'payé jusqu’au', sumVis: 'visiteurs ces 30 jours', ordersChart: 'Commandes par jour', yoy: 'vs même période l’an dernier', fromLocs: 'Testé depuis l’Europe', fromLocsExt: 'et les États-Unis' },
   pt: { h: 'Seu site em números', sub: 'Últimos 30 dias · medição anônima, sem cookies', visitors: 'Visitantes', pv: 'Páginas vistas', avg: 'Tempo médio', mobile: 'No celular', vs: 'vs 30 dias anteriores', ref: 'De onde vêm os visitantes', pages: 'Páginas mais vistas', peak: 'Horário de pico', none: 'As medições começam assim que o contador for instalado no seu site.', direct: 'Direto',
     up: 'Disponibilidade do site', upSub: 'Testado a cada 5 minutos', online: 'No ar', offline: 'Fora do ar', uptime: 'Disponibilidade 30 d', resp: 'Tempo de resposta', upFor: 'No ar há', days: 'dias', incidents: 'Incidentes 30 d', upNone: 'O monitoramento começa assim que for ativado.',
     biz: 'Seu negócio', orders: 'Pedidos', revenue: 'Faturamento', ticket: 'Ticket médio', bookings: 'Agendamentos',
     gr: 'Suas avaliações no Google', grCount: 'avaliações', grNew: 'novas este mês', grAsk: 'Pedir uma avaliação', grTxt: 'Mande este link aos seus clientes: ele abre direto a janela para deixar a avaliação.',
-    year: 'Plano anual', yearTxt: 'Pague 12 meses de uma vez e receba 14 meses de serviço: 2 meses grátis.', yearPay: 'Pagar o ano' },
+    year: 'Plano anual', yearTxt: 'Pague 12 meses de uma vez e receba 14 meses de serviço: 2 meses grátis.', yearPay: 'Pagar o ano', sumOk: 'Tudo em ordem', sumWarn: 'A regularizar', sumSusp: 'Serviço em pausa', sumUp: 'site no ar', sumDown: 'site fora do ar', sumPaid: 'pago até', sumVis: 'visitantes nos últimos 30 dias', ordersChart: 'Pedidos por dia', yoy: 'vs mesmo período do ano passado', fromLocs: 'Testado da Europa', fromLocsExt: 'e dos Estados Unidos' },
 };
 const fdur = (ms) => { const s = Math.round(ms / 1000); return s >= 60 ? Math.floor(s / 60) + ' min ' + String(s % 60).padStart(2, '0') + ' s' : s + ' s'; };
 function statsBlock(c, lang) {
@@ -287,7 +293,7 @@ function statsBlock(c, lang) {
   const max = Math.max(1, ...S.series.map((x) => x[1]));
   const W = 600, H = 120, bw = W / S.series.length;
   const bars = S.series.map(([k, v], i) => `<rect x="${(i * bw + 1).toFixed(1)}" y="${(H - v / max * H).toFixed(1)}" width="${(bw - 2).toFixed(1)}" height="${(v / max * H).toFixed(1)}" rx="2" fill="${i === S.series.length - 1 ? 'var(--accent)' : 'rgba(127,160,255,.45)'}"><title>${fdate(k, lang)} · ${v}</title></rect>`).join('');
-  const delta = S.deltaVisitors == null ? '' : `<span class="${S.deltaVisitors >= 0 ? 's-ok' : 's-grace'}" style="font:600 12px/1 var(--mono)">${S.deltaVisitors >= 0 ? '+' : ''}${S.deltaVisitors} % <span class="muted">${t.vs}</span></span>`;
+  const delta = (S.deltaVisitors == null ? '' : `<span class="${S.deltaVisitors >= 0 ? 's-ok' : 's-grace'}" style="font:600 12px/1 var(--mono)">${S.deltaVisitors >= 0 ? '+' : ''}${S.deltaVisitors} % <span class="muted">${t.vs}</span></span>`) + (S.yoyVisitors == null ? '' : `<br><span class="${S.yoyVisitors >= 0 ? 's-ok' : 's-grace'}" style="font:600 12px/1 var(--mono)">${S.yoyVisitors >= 0 ? '+' : ''}${S.yoyVisitors} % <span class="muted">${t.yoy}</span></span>`);
   const list = (rows, label) => rows.length ? `<div><span class="lab">${label}</span><table style="margin-top:8px">${rows.map(([k, v]) => `<tr><td>${esc(k === 'Direct' ? t.direct : k)}</td><td style="text-align:right;font-variant-numeric:tabular-nums">${v}</td></tr>`).join('')}</table></div>` : '';
   return `<h2>${t.h}</h2><p class="sub" style="margin-top:-8px">${t.sub}</p>
 <div class="stats" style="margin-top:0"><div class="stat"><span class="lab">${t.visitors}</span><b>${S.visitors}</b>${delta}</div><div class="stat"><span class="lab">${t.pv}</span><b>${S.pv}</b></div><div class="stat"><span class="lab">${t.avg}</span><b>${fdur(S.avgMs)}</b></div><div class="stat"><span class="lab">${t.mobile}</span><b>${S.mobilePct} %</b></div></div>
@@ -296,19 +302,35 @@ function statsBlock(c, lang) {
 }
 
 const pct = (d) => d == null ? '' : `<span class="${d >= 0 ? 's-ok' : 's-grace'}" style="font:600 12px/1 var(--mono)">${d >= 0 ? '+' : ''}${d} %</span>`;
+function summaryLine(c, s, lang) {
+  const t = SL[lang] || SL.fr; const U = UP.summary(c.id, 30); const S = ST.summary(c.id, 30);
+  const bad = s.status === 'suspended' ? 'susp' : (s.status === 'grace' || s.status === 'soon') ? 'warn' : 'ok';
+  const head = bad === 'susp' ? t.sumSusp : bad === 'warn' ? t.sumWarn : t.sumOk;
+  const parts = [];
+  if (U.hasData) parts.push(`<span class="${U.down ? 's-suspended' : 's-ok'}">● ${U.down ? t.sumDown : t.sumUp}</span>`);
+  parts.push(`${t.sumPaid} <b>${fdate(c.paidUntil, lang)}</b>`);
+  if (S.hasData) parts.push(`<b>${S.visitors}</b> ${t.sumVis}`);
+  return `<div class="panel" style="margin-top:18px;padding:14px 18px;border-color:${bad === 'ok' ? 'rgba(61,220,132,.45)' : bad === 'warn' ? 'rgba(255,145,66,.5)' : 'rgba(255,84,104,.5)'}"><b class="${bad === 'ok' ? 's-ok' : bad === 'warn' ? 's-grace' : 's-suspended'}">${head}</b><span class="muted"> · </span>${parts.join('<span class="muted"> · </span>')}</div>`;
+}
 function uptimeBlock(c, lang) {
   const t = SL[lang] || SL.fr; if (!(c.sites || [])[0]) return '';
   const U = UP.summary(c.id, 30);
   if (!U.hasData) return `<h2>${t.up}</h2><p class="muted">${t.upNone}</p>`;
   return `<h2>${t.up}</h2><p class="sub" style="margin-top:-8px">${t.upSub} · ${esc((c.sites || [])[0].replace(/^https?:\/\//, ''))}</p>
-<div class="stats" style="margin-top:0"><div class="stat"><span class="lab">${U.down ? t.offline : t.online}</span><b class="${U.down ? 's-suspended' : 's-ok'}" style="font-size:20px">${U.down ? '●' : '●'} ${U.down ? t.offline : t.online}</b></div><div class="stat"><span class="lab">${t.uptime}</span><b>${U.uptimePct != null ? U.uptimePct + ' %' : '—'}</b></div><div class="stat"><span class="lab">${t.resp}</span><b>${U.avgMs != null ? (U.avgMs / 1000).toFixed(2).replace('.', lang === 'pt' ? ',' : ',') + ' s' : '—'}</b></div><div class="stat"><span class="lab">${U.down ? t.incidents : t.upFor}</span><b>${U.down ? U.incidents30 : U.upDays + ' ' + t.days}</b></div></div>`;
+${U.sites.length > 1 ? `<div class="tbl" style="margin-bottom:12px"><table>${U.sites.map((x) => `<tr><td class="mono" style="font-size:13px">${esc(x.url.replace(/^https?:\/\//, '').replace(/\/$/, ''))}</td><td><span class="${x.down ? 's-suspended' : 's-ok'}">● ${x.down ? t.offline : t.online}</span></td><td style="text-align:right">${x.uptimePct != null ? x.uptimePct + ' %' : '—'}</td><td style="text-align:right" class="muted">${x.lastMs != null ? (x.lastMs / 1000).toFixed(2).replace('.', ',') + ' s' : ''}</td></tr>`).join('')}</table></div>` : ''}
+<div class="stats" style="margin-top:0"><div class="stat"><span class="lab">${U.down ? t.offline : t.online}</span><b class="${U.down ? 's-suspended' : 's-ok'}" style="font-size:20px">${U.down ? '●' : '●'} ${U.down ? t.offline : t.online}</b></div><div class="stat"><span class="lab">${t.uptime}</span><b>${U.uptimePct != null ? U.uptimePct + ' %' : '—'}</b></div><div class="stat"><span class="lab">${t.resp}</span><b>${U.avgMs != null ? (U.avgMs / 1000).toFixed(2).replace('.', lang === 'pt' ? ',' : ',') + ' s' : '—'}</b></div><div class="stat"><span class="lab">${U.down ? t.incidents : t.upFor}</span><b>${U.down ? U.incidents30 : U.upDays + ' ' + t.days}</b></div></div>
+<p class="muted" style="font-size:12px;margin:8px 0 0">${t.fromLocs}${U.extLocs.length ? ' ' + t.fromLocsExt + (U.extPct != null ? ' (' + U.extPct + ' %)' : '') : ''}.</p>`;
 }
 function bizBlock(c, lang) {
   const t = SL[lang] || SL.fr; const K = ST.kpiSummary(c.id, 30); if (!K) return '';
   const tiles = [];
   if (K.orders || K.revenue) { tiles.push(`<div class="stat"><span class="lab">${t.orders}</span><b>${K.orders}</b>${pct(K.deltaOrders)}</div>`); tiles.push(`<div class="stat"><span class="lab">${t.revenue}</span><b>${eur(K.revenue, lang)}</b>${pct(K.deltaRevenue)}</div>`); tiles.push(`<div class="stat"><span class="lab">${t.ticket}</span><b>${eur(K.avgTicket, lang)}</b></div>`); }
   if (K.bookings) tiles.push(`<div class="stat"><span class="lab">${t.bookings}</span><b>${K.bookings}</b>${pct(K.deltaBookings)}</div>`);
-  return `<h2>${t.biz}</h2><p class="sub" style="margin-top:-8px">${t.sub.split('·')[0].trim()}</p><div class="stats" style="margin-top:0">${tiles.join('')}</div>`;
+  const vals = K.series.map((x) => K.orders ? x[1] : x[3]); const max = Math.max(1, ...vals); const W = 600, H = 100, bw = W / vals.length;
+  const bars = K.series.map((x, i) => `<rect x="${(i * bw + 1).toFixed(1)}" y="${(H - vals[i] / max * H).toFixed(1)}" width="${(bw - 2).toFixed(1)}" height="${(vals[i] / max * H).toFixed(1)}" rx="2" fill="${i === vals.length - 1 ? 'var(--accent)' : 'rgba(127,160,255,.45)'}"><title>${fdate(x[0], lang)} · ${vals[i]}</title></rect>`).join('');
+  const yoy = K.yoyOrders != null ? `<p class="muted" style="font-size:13px;margin:10px 0 0">${pct(K.yoyOrders)} ${t.orders.toLowerCase()} · ${pct(K.yoyRevenue)} ${t.revenue.toLowerCase()} ${t.yoy}</p>` : '';
+  return `<h2>${t.biz}</h2><p class="sub" style="margin-top:-8px">${t.sub.split('·')[0].trim()}</p><div class="stats" style="margin-top:0">${tiles.join('')}</div>
+<div class="panel" style="margin-top:12px"><span class="lab">${K.orders ? t.ordersChart : t.bookings}</span><svg viewBox="0 0 ${W} ${H}" width="100%" height="100" preserveAspectRatio="none" style="display:block;margin-top:10px">${bars}</svg>${yoy}</div>`;
 }
 function reviewsBlock(c, lang) {
   const t = SL[lang] || SL.fr; const R = RV.summary(c); if (!R) return '';
@@ -331,6 +353,7 @@ function cardPage(c, lang) {
 <p class="row" style="justify-content:flex-end;margin:16px 0 0"><a class="mono" href="?lang=${other}">${other.toUpperCase()}</a></p>
 <h1 style="margin-top:6px">${t.title}</h1><p class="sub">${t.hello}${c.contactName ? ' ' + esc(c.contactName) : ''}${lang === 'fr' ? ' !' : '!'} ${t.intro}</p>
 ${card(c, s, lang)}
+${summaryLine(c, s, lang)}
 <div class="panel" style="margin-top:18px;border-color:var(--line-2)"><p style="margin:0" class="s-${s.status}"><b>${t.st[s.status]}${s.status === 'grace' ? ' ' + fdate(B.addDays(s.suspendOn, -1), lang, 1) + '.' : ''}</b></p>
 <div class="two" style="margin-top:14px"><div><span class="lab">${t.due}</span><div style="font-weight:700;margin-top:6px">${fdate(s.due, lang, 1)}</div></div><div><span class="lab">${t.paid}</span><div style="font-weight:700;margin-top:6px">${fdate(c.paidUntil, lang, 1)}</div></div><div><span class="lab">${t.amount}</span><div style="font-weight:700;margin-top:6px">${eur(c.amount, lang)}</div></div></div></div>
 ${s.status !== 'paused' ? `<h2>${t.pay}</h2>
@@ -385,6 +408,18 @@ const server = http.createServer(async (req, res) => {
   const p = u.pathname.replace(/\/+$/, '') || '/'; const m = req.method;
   try {
     if (p === '/api/health') return json(res, 200, { ok: true });
+    if (p === '/api/probe/sites' && m === 'GET') { // lista para o teste externo
+      const secret = process.env.PROBE_SECRET; if (!secret || !same(String(req.headers.authorization || ''), 'Bearer ' + secret)) return json(res, 401, { error: 'auth' });
+      return json(res, 200, db().clients.filter((c) => !c.archived && c.override !== 'paused').flatMap((c) => (c.sites || []).slice(0, 6)));
+    }
+    if (p === '/api/probe' && m === 'POST') { // resultados de um teste feito de fora (ex.: GitHub Actions nos EUA)
+      const secret = process.env.PROBE_SECRET; const auth = String(req.headers.authorization || '');
+      if (!secret || !same(auth, 'Bearer ' + secret)) return json(res, 401, { error: 'auth' });
+      let b = {}; try { b = JSON.parse((await readBody(req, 100000)).toString('utf8') || '{}'); } catch (e) { return json(res, 400, { error: 'json' }); }
+      const loc = String(b.location || 'ext').slice(0, 20); let n = 0;
+      for (const r of (Array.isArray(b.results) ? b.results : []).slice(0, 100)) { const c = db().clients.find((x) => !x.archived && (x.sites || []).includes(r.url)); if (c) { UP.external(c.id, r.url, loc, !!r.ok, r.ms); n++; } }
+      UP.flush(); return json(res, 200, { recorded: n });
+    }
     if (p === '/a.js') { res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=86400', 'Access-Control-Allow-Origin': '*' }); return res.end(ST.SCRIPT); }
     let ms;
     if ((ms = p.match(/^\/api\/(a|stats)\/([A-Za-z0-9_-]{6,64})$/))) {
@@ -465,6 +500,7 @@ const server = http.createServer(async (req, res) => {
       if (f.job === 'monitor') { await SCH2.monitor(); msg = 'Sites testados.'; }
       else if (f.job === 'reminders') { msg = (await SCH2.reminders()) + ' lembrete(s) enviado(s).'; }
       else if (f.job === 'reviews') { await SCH2.reviews(); msg = 'Notas atualizadas.'; }
+      else if (f.job === 'bank') { const r = await bankSync(); msg = r.skipped ? 'Banco não configurado.' : r.ok ? `Banco: ${r.matched} pagamento(s) reconhecido(s), ${r.newUnmatched} a conferir.` : 'Banco: falha (' + r.error + ').'; }
       else if (f.job === 'backup') { const g = await BK.toGitHub(); const e = await BK.toEmail(); msg = 'Backup: GitHub ' + (g.skipped ? 'não configurado' : g.ok ? 'ok' : 'falhou') + ' · e-mail ' + (e.skipped ? 'não configurado' : e.ok ? 'ok' : 'falhou') + '.'; }
       return redirect(res, '/admin/settings?ok=' + encodeURIComponent(msg));
     }
@@ -510,7 +546,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 setInterval(() => store.backup(), 6 * 3600000).unref(); setTimeout(() => store.backup(), 10000).unref();
-const SCH = require('./lib/scheduler'); if (process.env.NODE_ENV !== 'test') SCH.start();
+const SCH = require('./lib/scheduler'); SCH.setBankHook(bankSync); if (process.env.NODE_ENV !== 'test') SCH.start();
 server.listen(PORT, () => console.log('[drt-clientes] no ar na porta ' + PORT + ' · ' + PUBLIC_URL));
 process.on('SIGTERM', () => { try { store.save(); ST.flush(); } catch (e) { /* ok */ } process.exit(0); });
 module.exports = { server, stripeEvent, recordPayment };

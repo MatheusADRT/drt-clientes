@@ -1,0 +1,33 @@
+# Teste dos sites dos clientes a partir dos Estados Unidos (os runners do GitHub ficam lá), a cada 15 minutos.
+# Manda o resultado para a central, que o mostra como "testé depuis l'Europe et les États-Unis".
+# Segredos do repositório: CENTRAL_URL (ex.: https://clientes.drtcreation.com) e PROBE_SECRET (mesmo valor que no Render).
+name: probe
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Lista de sites e teste
+        env:
+          CENTRAL_URL: ${{ secrets.CENTRAL_URL }}
+          PROBE_SECRET: ${{ secrets.PROBE_SECRET }}
+        run: |
+          set -e
+          sites=$(curl -sS -H "Authorization: Bearer $PROBE_SECRET" "$CENTRAL_URL/api/probe/sites")
+          results="["
+          for u in $(echo "$sites" | tr -d '[]"' | tr ',' ' '); do
+            t0=$(date +%s%3N)
+            code=$(curl -s -o /dev/null -m 20 -w '%{http_code}' -A 'DRT-Monitor-US/1.0' "$u" || echo 000)
+            ms=$(( $(date +%s%3N) - t0 ))
+            ok=false; case "$code" in 2*|3*|503) ok=true;; esac
+            results="$results{\"url\":\"$u\",\"ok\":$ok,\"ms\":$ms,\"code\":$code},"
+          done
+          results="${results%,}]"
+          curl -sS -X POST -H "Authorization: Bearer $PROBE_SECRET" -H 'Content-Type: application/json' \
+            -d "{\"location\":\"us\",\"results\":$results}" "$CENTRAL_URL/api/probe"

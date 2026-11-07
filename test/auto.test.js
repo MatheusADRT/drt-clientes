@@ -44,14 +44,18 @@ test('lembretes, relatório, monitoramento e plano anual', async (t) => {
   assert.equal(await SCH.reports(B.addDays(B.today(), 5)), 0); // não é dia 1
   assert.equal(await SCH.reports(B.today().slice(0, 8) + '01'), 1);
   assert.equal(await SCH.reports(B.today().slice(0, 8) + '01'), 0);
-  // monitoramento: porta fechada = falha; 2 falhas = fora do ar; servidor de teste no ar = volta
+  // monitoramento: mesmo endereço, servidor desligado (2 falhas = fora do ar) e depois religado (volta)
   const events = [];
+  const up = http.createServer((q, s2) => { s2.writeHead(200); s2.end('ok'); }); await new Promise((ok) => up.listen(0, '127.0.0.1', ok));
+  const port = up.address().port; await new Promise((ok) => up.close(ok));
+  c.sites = ['http://127.0.0.1:' + port + '/'];
   await UP.check(c, (ev) => events.push(ev)); await UP.check(c, (ev) => events.push(ev));
   assert.deepEqual(events, ['down']); assert.equal(UP.summary(c.id).down, true);
-  const up = http.createServer((q, s2) => { s2.writeHead(200); s2.end('ok'); }); await new Promise((ok) => up.listen(0, '127.0.0.1', ok));
-  c.sites = ['http://127.0.0.1:' + up.address().port + '/'];
-  await UP.check(c, (ev) => events.push(ev)); up.close();
-  assert.deepEqual(events, ['down', 'up']); const U = UP.summary(c.id); assert.equal(U.down, false); assert.equal(U.checks, 3); assert.equal(U.uptimePct, 33.33);
+  const up2 = http.createServer((q, s2) => { s2.writeHead(200); s2.end('ok'); }); await new Promise((ok) => up2.listen(port, '127.0.0.1', ok));
+  await UP.check(c, (ev) => events.push(ev)); up2.close();
+  assert.deepEqual(events, ['down', 'up']); const U = UP.summary(c.id); assert.equal(U.down, false); assert.equal(U.checks, 3); assert.equal(U.uptimePct, 33.33); assert.equal(U.sites.length, 1);
+  // teste externo (outro local) entra na conta
+  UP.external(c.id, c.sites[0], 'us', true, 300); assert.equal(UP.summary(c.id).extPct, 100); assert.deepEqual(UP.summary(c.id).extLocs, ['us']);
   // plano anual: 12 pagos = 14 meses, valor 12 × mensalidade
   const paidBefore = c.paidUntil;
   await fetch(base() + '/admin/c/' + id + '/pay', { method: 'POST', redirect: 'manual', headers: { cookie: ck }, body: new URLSearchParams({ months: '12', method: 'virement' }) });
@@ -68,4 +72,16 @@ test('backup: o arquivo baixado contém clientes, pagamentos, visitas e monitora
   assert.ok(snap.db.clients.length >= 1); assert.ok(snap.db.payments.length >= 1);
   assert.ok(Object.keys(snap.stats).length >= 1); assert.ok(Object.keys(snap.uptime).length >= 1);
   assert.deepEqual(await BK.toGitHub(), { skipped: true }); assert.deepEqual(await BK.toEmail(), { skipped: true });
+});
+
+test('banco: casa a transferência pela comunicação estruturada ou por nome + valor', () => {
+  const BANK = require('../lib/bank');
+  const clients = [{ id: 'a', name: 'Agito Sushi Brussels', amount: 4000 }, { id: 'b', name: 'Big Festa & Co', amount: 4000 }];
+  const ogmFor = (c) => (c.id === 'a' ? ['+++000/1261/20006+++'] : ['+++000/2261/10030+++']);
+  const tx = (amount, text, from) => ({ id: 'x', attributes: { amount, remittanceInformation: text, counterpartName: from } });
+  assert.equal(BANK.match(tx('40.00', '+++000/2261/10030+++', 'ITF GROUP SRL'), clients, ogmFor).client.id, 'b');
+  assert.equal(BANK.match(tx('40.00', '000126120006', 'X'), clients, ogmFor).client.id, 'a');
+  assert.equal(BANK.match(tx('480.00', 'Big Festa maintenance annuelle', 'ITF'), clients, ogmFor).client.id, 'b');
+  assert.equal(BANK.match(tx('40.00', 'loyer', 'Someone'), clients, ogmFor), null);
+  assert.equal(BANK.match(tx('-40.00', '+++000/2261/10030+++', 'x'), clients, ogmFor), null);
 });
