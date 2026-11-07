@@ -61,3 +61,11 @@ test('lembretes, relatório, monitoramento e plano anual', async (t) => {
   const html = await (await fetch(base() + '/c/' + c.token)).text();
   assert.match(html, /Disponibilidade do site/); assert.match(html, /Plano anual/); assert.match(html, /480\s€/);
 });
+
+test('backup: o arquivo baixado contém clientes, pagamentos, visitas e monitoramento', async () => {
+  const BK = require('../lib/backup'); require('../lib/stats').flush(); UP.flush();
+  const snap = BK.snapshot();
+  assert.ok(snap.db.clients.length >= 1); assert.ok(snap.db.payments.length >= 1);
+  assert.ok(Object.keys(snap.stats).length >= 1); assert.ok(Object.keys(snap.uptime).length >= 1);
+  assert.deepEqual(await BK.toGitHub(), { skipped: true }); assert.deepEqual(await BK.toEmail(), { skipped: true });
+});

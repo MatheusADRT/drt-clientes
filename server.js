@@ -15,6 +15,7 @@ const ST = require('./lib/stats');
 const UP = require('./lib/uptime');
 const NT = require('./lib/notify');
 const RV = require('./lib/reviews');
+const BK = require('./lib/backup');
 
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC_URL = (process.env.PUBLIC_URL || 'http://localhost:' + PORT).replace(/\/+$/, '');
@@ -239,6 +240,11 @@ function settingsPage(flash) {
 <tr><th>E-mail automático</th><td>${NT.mailOn() ? '<span class="s-ok">ligado</span> (' + esc(process.env.MAIL_FROM) + ')' : '<span class="muted">desligado</span> · defina RESEND_API_KEY e MAIL_FROM'}</td></tr>
 <tr><th>Avaliações Google</th><td>${RV.on() ? '<span class="s-ok">ligado</span>' : '<span class="muted">desligado</span> · defina GOOGLE_PLACES_KEY e o Place ID em cada cliente'}</td></tr></table>
 <form method="post" action="/admin/run" class="row" style="margin-top:14px"><button class="btn sm" name="job" value="monitor">Testar os sites agora</button><button class="btn sm" name="job" value="reminders">Rodar lembretes de hoje</button><button class="btn sm" name="job" value="reviews">Atualizar notas Google</button></form></div>
+<h2>Cópia de segurança</h2><div class="panel"><table>
+<tr><th>Baixar agora</th><td><a class="btn sm" href="/admin/backup.json" download>Baixar backup (.json)</a> <span class="muted">— clientes, pagamentos, visitas e monitoramento. Guarde num lugar seu de vez em quando.</span></td></tr>
+<tr><th>GitHub (diário)</th><td>${process.env.GITHUB_BACKUP_REPO && process.env.GITHUB_TOKEN ? '<span class="s-ok">ligado</span> · ' + esc(process.env.GITHUB_BACKUP_REPO) : '<span class="muted">desligado</span> · defina GITHUB_BACKUP_REPO (ex.: MatheusADRT/drt-backups, privado) e GITHUB_TOKEN'}</td></tr>
+<tr><th>E-mail (toda segunda)</th><td>${NT.mailOn() && process.env.ADMIN_EMAIL ? '<span class="s-ok">ligado</span> · ' + esc(process.env.ADMIN_EMAIL) : '<span class="muted">desligado</span> · precisa do e-mail configurado e de ADMIN_EMAIL'}</td></tr></table>
+<form method="post" action="/admin/run" class="row" style="margin-top:14px"><button class="btn sm" name="job" value="backup">Enviar backup agora</button></form></div>
 <h2>Integração Stripe</h2><div class="panel"><p style="margin:0">Webhook: <code>${esc(PUBLIC_URL)}/api/stripe/webhook</code> · ${STRIPE_WH ? '<span class="s-ok">ativo</span>' : '<span class="muted">desligado (defina STRIPE_WEBHOOK_SECRET no Render quando tiver a conta Stripe profissional)</span>'}</p>
 <p class="muted" style="font-size:13px;margin:10px 0 0">Eventos: <code>checkout.session.completed</code> e <code>invoice.paid</code>. Em cada cliente, cole o link de pagamento do Stripe; o pagamento é ligado ao cliente automaticamente.</p></div>
 <h2>Últimos eventos</h2><div class="tbl"><table>${db().events.slice(0, 30).map((e) => { const c = byId(e.clientId); return `<tr><td class="mono muted">${esc(e.at.slice(0, 16).replace('T', ' '))}</td><td>${c ? esc(c.name) : ''}</td><td>${esc(e.text)}</td></tr>`; }).join('') || '<tr><td class="muted">Nada ainda.</td></tr>'}</table></div>`;
@@ -452,12 +458,14 @@ const server = http.createServer(async (req, res) => {
       return redirect(res, '/admin/c/' + c.id + '?ok=' + encodeURIComponent('Cliente cadastrado. Envie o link da carteirinha para ele.'));
     }
     if (p === '/admin/settings' && m === 'GET') return html(res, 200, settingsPage(flash));
+    if (p === '/admin/backup.json' && m === 'GET') { res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Disposition': 'attachment; filename="drt-clientes-' + B.today() + '.json"', 'Cache-Control': 'no-store', ...SEC }); return res.end(JSON.stringify(BK.snapshot())); }
     if (p === '/admin/run' && m === 'POST') {
       const f = form(await readBody(req)); const SCH2 = require('./lib/scheduler');
       let msg = '';
       if (f.job === 'monitor') { await SCH2.monitor(); msg = 'Sites testados.'; }
       else if (f.job === 'reminders') { msg = (await SCH2.reminders()) + ' lembrete(s) enviado(s).'; }
       else if (f.job === 'reviews') { await SCH2.reviews(); msg = 'Notas atualizadas.'; }
+      else if (f.job === 'backup') { const g = await BK.toGitHub(); const e = await BK.toEmail(); msg = 'Backup: GitHub ' + (g.skipped ? 'não configurado' : g.ok ? 'ok' : 'falhou') + ' · e-mail ' + (e.skipped ? 'não configurado' : e.ok ? 'ok' : 'falhou') + '.'; }
       return redirect(res, '/admin/settings?ok=' + encodeURIComponent(msg));
     }
     if (p === '/admin/settings' && m === 'POST') {
