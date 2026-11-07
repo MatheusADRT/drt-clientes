@@ -423,9 +423,10 @@ const server = http.createServer(async (req, res) => {
       for (const r of (Array.isArray(b.results) ? b.results : []).slice(0, 100)) { const c = db().clients.find((x) => !x.archived && (x.sites || []).includes(r.url)); if (c) { UP.external(c.id, r.url, loc, !!r.ok, r.ms); n++; } }
       UP.flush(); return json(res, 200, { recorded: n });
     }
+    let mp;
     if (p === '/site.js') { res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=86400', 'Access-Control-Allow-Origin': '*' }); return res.end(SITE_JS); }
-    if ((mm = p.match(/^\/pause\/([A-Za-z0-9_-]{6,64})$/)) && (m === 'GET' || m === 'HEAD')) {
-      const c = db().clients.find((x) => x.key === mm[1]); const name = c ? c.name : 'Site';
+    if ((mp = p.match(/^\/pause\/([A-Za-z0-9_-]{6,64})$/)) && (m === 'GET' || m === 'HEAD')) {
+      const c = db().clients.find((x) => x.key === mp[1]); const name = c ? c.name : 'Site';
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=300', 'Access-Control-Allow-Origin': '*', 'X-Robots-Tag': 'noindex' });
       return res.end(PAUSE_TPL.replace(/\{\{lang\}\}/g, c && c.lang === 'pt' ? 'pt' : 'fr').replace(/\{\{name\}\}/g, esc(name)).replace(/\{\{color\}\}/g, c && c.color ? c.color : '#1d44d6'));
     }
