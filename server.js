@@ -19,6 +19,7 @@ const BK = require('./lib/backup');
 const BANK = require('./lib/bank');
 const ESP = require('./lib/espace');
 const BF = require('./lib/briefing');
+const PR = require('./lib/prospects');
 const BC = require('./lib/brandcard');
 const PAUSE_TPL = fs.readFileSync(path.join(__dirname, 'integrations', 'pause-page.html'), 'utf8');
 // script para sites estáticos: contador de visitas + pausa do lado do visitante quando a mensalidade está suspensa
@@ -161,7 +162,7 @@ function cleanClient(f, c) {
 }
 
 // ---------- telas do painel ----------
-const NAV = (cur) => `<nav class="nav"><a href="/admin"${cur === 'home' ? ' aria-current="page"' : ''}>Clientes</a><a href="/admin/briefings"${cur === 'brf' ? ' aria-current="page"' : ''}>Briefings${(() => { const n = (db().briefings || []).filter((b) => b.status === 'new').length; return n ? ' (' + n + ')' : ''; })()}</a><a href="/admin/new"${cur === 'new' ? ' aria-current="page"' : ''}>+ Novo</a><a href="/admin/settings"${cur === 'set' ? ' aria-current="page"' : ''}>Ajustes</a><form method="post" action="/admin/logout" style="margin:0"><button>Sair</button></form></nav>`;
+const NAV = (cur) => `<nav class="nav"><a href="/admin"${cur === 'home' ? ' aria-current="page"' : ''}>Clientes</a><a href="/admin/prospects"${cur === 'pro' ? ' aria-current="page"' : ''}>Prospects${(() => { const n = PR.stats(db().prospects || []).due.length; return n ? ' (' + n + ')' : ''; })()}</a><a href="/admin/briefings"${cur === 'brf' ? ' aria-current="page"' : ''}>Briefings${(() => { const n = (db().briefings || []).filter((b) => b.status === 'new').length; return n ? ' (' + n + ')' : ''; })()}</a><a href="/admin/new"${cur === 'new' ? ' aria-current="page"' : ''}>+ Novo</a><a href="/admin/settings"${cur === 'set' ? ' aria-current="page"' : ''}>Ajustes</a><form method="post" action="/admin/logout" style="margin:0"><button>Sair</button></form></nav>`;
 const STXT = (s) => ({
   ok: `Vence em ${s.daysToDue} dias`,
   soon: s.daysToDue === 0 ? 'Vence hoje' : `Vence em ${s.daysToDue} ${s.daysToDue > 1 ? 'dias' : 'dia'}`,
@@ -194,6 +195,7 @@ function dashboard(flash) {
 <div class="stat"><span class="lab">Recebido em ${fdate(month + '-01', 'pt', 1).replace(/^1 de /, '')}</span><b>${eur(cashed, 'pt')}</b></div>
 <div class="stat"><span class="lab">Em atraso</span><b class="${late.length ? 's-grace' : ''}">${late.length}</b></div>
 <div class="stat"><span class="lab">Sites fora do ar</span><b class="${rows.some((r) => r.s.status === 'suspended') ? 's-suspended' : ''}">${rows.filter((r) => r.s.status === 'suspended').length}</b></div></div>
+${(() => { const S1 = PR.stats(db().prospects || []); return (db().prospects || []).length ? `<div class="flash" style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center"><span><b>Prospects:</b> ${S1.due.length} follow-up(s) para hoje · ${(db().prospects || []).filter((x) => x.status === 'todo').length} a contatar · ${S1.contactsWeek}/20 contatos esta semana</span><a class="btn sm pri" href="/admin/prospects">Abrir lista</a></div>` : ''; })()}
 ${(() => { const nb = (db().briefings || []).filter((b) => b.status === 'new'); return nb.length ? `<h2>Briefings novos (${nb.length})</h2><div class="tbl"><table><tr><th>Empresa</th><th>Contato</th><th>Precisa de</th><th>Recebido</th></tr>${nb.map((b) => `<tr><td><a href="/admin/briefings/${b.id}"><b>${esc(b.answers.company)}</b></a></td><td>${esc(b.answers.contact)}</td><td>${esc(BF.answerText(BF.QS.find((q) => q.k === 'need'), b.answers))}</td><td class="mono muted">${esc(b.at.slice(0, 10))}</td></tr>`).join('')}</table></div>` : ''; })()}
 ${(() => { const open = db().requests.filter((r) => r.status !== 'done').sort((a, b) => (b.urgency === 'urgent') - (a.urgency === 'urgent') || a.at.localeCompare(b.at)); return open.length ? `<h2>Pedidos em aberto (${open.length})</h2><div class="tbl"><table><tr><th>Cliente</th><th>Pedido</th><th>Desde</th><th>Status</th></tr>${open.map((r) => { const c = byId(r.clientId); return `<tr><td>${c ? `<a href="/admin/c/${c.id}">${esc(c.name)}</a>` : ''}</td><td>${r.urgency === 'urgent' ? '<b class="s-grace">URGENTE · </b>' : ''}${esc(r.title)}</td><td class="mono muted">${esc(r.at.slice(0, 10))}</td><td>${r.status === 'doing' ? '<span class="s-soon">Em andamento</span>' : '<span class="s-ok">Novo</span>'}</td></tr>`; }).join('')}</table></div>` : ''; })()}
 <h2>Visão geral</h2><div class="tbl"><table><tr><th>Cliente</th><th>Status</th><th>Mensalidade</th><th>Pago até</th><th>Sites</th><th>Visitantes 30 d</th><th>Pedidos</th><th></th></tr>${rows.map(({ c, s }) => { const U = UP.summary(c.id, 30); const S2 = ST.summary(c.id, 30); const nrq = db().requests.filter((r) => r.clientId === c.id && r.status !== 'done').length; return `<tr><td><a href="/admin/c/${c.id}"><b>${esc(c.name)}</b></a><br><span class="mono muted">DRT-${c.no}</span></td><td><span class="s-${s.status}">${esc(STATUS[s.status].pt)}</span></td><td>${eur(c.amount, 'pt')}</td><td>${fdate(c.paidUntil, 'pt')}</td><td>${U.hasData ? (U.down ? '<span class="s-suspended">● fora do ar</span>' : `<span class="s-ok">●</span> ${String(U.uptimePct).replace('.', ',')} %`) : '<span class="muted">—</span>'}</td><td>${S2.hasData ? S2.visitors : '<span class="muted">—</span>'}</td><td>${nrq || '<span class="muted">0</span>'}</td><td><a class="btn sm" href="/admin/c/${c.id}/espace" target="_blank">Ver como cliente</a></td></tr>`; }).join('')}</table></div>
@@ -600,7 +602,9 @@ const server = http.createServer(async (req, res) => {
       const id = store.id(8); const lang = BF.LANGS.includes(b.lang) ? b.lang : 'fr';
       const files = BF.saveFiles(path.join(store.DIR, 'briefings', id), b.files);
       const rec = { id, at: new Date().toISOString(), lang, status: 'new', answers, files, note: '' };
-      d.briefings.unshift(rec); store.log('briefing', null, 'Novo briefing: ' + answers.company + ' (' + answers.contact + ')'); store.save();
+      d.briefings.unshift(rec); store.log('briefing', null, 'Novo briefing: ' + answers.company + ' (' + answers.contact + ')');
+      const pm = PR.matchBriefing(d.prospects || [], rec); if (pm) { pm.status = 'briefing'; pm.briefingId = id; pm.nextAt = PR.addDays(PR.today(), 2); PR.log(pm, 'briefing', 'Briefing recebido'); rec.prospectId = pm.id; }
+      store.save();
       json(res, 200, { ok: true });
       const link = PUBLIC_URL + '/admin/briefings/' + id;
       const txt = 'Novo briefing de ' + answers.company + ' (' + answers.contact + ', ' + answers.phone + ', ' + answers.email + ')\n' + files.length + ' arquivo(s)\n\n' + BF.summaryText(rec) + '\n\nAbrir: ' + link;
@@ -651,6 +655,74 @@ const server = http.createServer(async (req, res) => {
 
     const flash = u.searchParams.get('ok') || '';
     if (p === '/admin' && m === 'GET') return html(res, 200, dashboard(flash));
+    // ----- prospects -----
+    if (p === '/admin/prospects' && m === 'GET') {
+      const list = db().prospects || []; const S1 = PR.stats(list); const tab = u.searchParams.get('s') || (S1.due.length ? 'due' : list.some((x) => x.status === 'todo') ? 'todo' : 'open');
+      const T = { due: ['Hoje', S1.due], todo: ['A contatar', list.filter((x) => x.status === 'todo')], open: ['Em conversa', list.filter((x) => ['contacted', 'replied', 'briefing', 'proposal'].includes(x.status))], won: ['Fechados', list.filter((x) => x.status === 'won')], lost: ['Arquivo', list.filter((x) => x.status === 'lost')], all: ['Todos', list] };
+      const cur = T[tab] || T.open; const items = cur[1].slice().sort((a, b) => tab === 'due' ? (a.nextAt || '').localeCompare(b.nextAt || '') : b.at.localeCompare(a.at));
+      const goal = (lab, v, g, sub) => `<div class="stat"><span class="lab">${lab}</span><b>${v}${g ? `<span class="muted" style="font-size:15px"> / ${g}</span>` : ''}</b>${g ? `<div class="bar"><i style="width:${Math.min(100, Math.round(v / g * 100))}%"></i></div>` : ''}${sub ? `<span class="muted" style="font-size:12px">${sub}</span>` : ''}</div>`;
+      const BU = PUBLIC_URL + '/briefing';
+      const body = `${flash ? `<div class="flash">${esc(flash)}</div>` : ''}<h1>Prospects</h1><p class="sub">${list.length} negócio(s) na lista · semana desde ${fdate(PR.weekStart(), 'pt')}</p>
+<div class="pgoal">${goal('Contatos na semana', S1.contactsWeek, 20)}${goal('Respostas na semana', S1.repliesWeek, 5, S1.rate != null ? 'taxa de resposta ' + S1.rate + ' %' : '')}${goal('Briefings no mês', S1.briefMonth, 8)}${goal('Propostas no mês', S1.propMonth, 4)}${goal('Fechados no mês', S1.wonMonth, 1)}</div>
+<div class="row" style="margin:18px 0 0;align-items:flex-start"><details class="qadd"><summary>+ Adicionar negócio</summary><form class="f panel" method="post" action="/admin/prospects" style="margin-top:10px;max-width:760px">${PR.formFields({})}<label>Notas<textarea name="notes" rows="2"></textarea></label><div class="row"><button class="btn pri">Adicionar</button></div></form></details>
+<details class="qadd"><summary>Colar vários</summary><form class="f panel" method="post" action="/admin/prospects/bulk" style="margin-top:10px;max-width:760px"><label>Um negócio por linha<textarea name="lines" rows="7" placeholder="Sushi Bairro; Saint-Gilles; 0470 12 34 56; restaurante; @sushibairro&#10;Barber King; Ixelles; 0485 11 22 33; barbearia"></textarea><small>Nome; bairro; telefone; tipo; instagram. Só o nome é obrigatório. Também funciona colando colunas de uma planilha.</small></label>
+<div class="two"><label>Bairro padrão<input name="area" placeholder="Saint-Gilles"></label><label>Tipo padrão<select name="type">${Object.entries(PR.TYPES).map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select></label><label>Idioma<select name="lang"><option value="fr">Français</option><option value="pt">Português</option><option value="en">English</option><option value="nl">Nederlands</option></select></label></div><div class="row"><button class="btn pri">Adicionar todos</button></div></form></details></div>
+<nav class="ptabs">${Object.entries(T).map(([k, [l, xs]]) => `<a href="/admin/prospects?s=${k}"${(T[tab] ? tab : 'open') === k ? ' aria-current="page"' : ''}>${l} (${xs.length})</a>`).join('')}</nav>
+${items.length ? `<div class="plist">${items.map((x) => PR.row(x, BU)).join('')}</div>` : `<div class="panel"><p style="margin:0">${tab === 'due' ? 'Nada para hoje. 👌' : 'Nenhum negócio aqui ainda.'}</p></div>`}`;
+      return html(res, 200, page({ title: 'Prospects · DRT Creation', nav: NAV('pro'), body, head: '<style>' + PR.CSS + '</style>' }));
+    }
+    if (p === '/admin/prospects' && m === 'POST') {
+      const raw = await readBody(req, 50000); const f = Object.fromEntries(new URLSearchParams(raw.toString('utf8'))); f.signals = new URLSearchParams(raw.toString('utf8')).getAll('signals');
+      if (!String(f.name || '').trim()) return redirect(res, '/admin/prospects?ok=' + encodeURIComponent('Falta o nome.'));
+      const d = db(); if (!Array.isArray(d.prospects)) d.prospects = [];
+      const x = PR.create(f, store.id(6)); d.prospects.unshift(x); store.save();
+      return redirect(res, '/admin/prospects?s=todo&ok=' + encodeURIComponent(x.name + ' adicionado.'));
+    }
+    if (p === '/admin/prospects/bulk' && m === 'POST') {
+      const raw = await readBody(req, 300000); const f = Object.fromEntries(new URLSearchParams(raw.toString('utf8')));
+      const d = db(); if (!Array.isArray(d.prospects)) d.prospects = [];
+      const nk = (x) => String(x.name).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const seen = new Set(d.prospects.map(nk)); const seenPh = new Set(d.prospects.map((x) => PR.waNumber(x.phone)).filter(Boolean));
+      let add = 0, dup = 0;
+      for (const r of PR.parseBulk(f.lines, { area: f.area, type: f.type, lang: f.lang, channel: 'whatsapp', signals: [] })) {
+        const ph = PR.waNumber(r.phone); if (seen.has(nk(r)) || (ph && seenPh.has(ph))) { dup++; continue; }
+        const x = PR.create(r, store.id(6)); d.prospects.unshift(x); seen.add(nk(x)); if (ph) seenPh.add(ph); add++;
+      }
+      store.save();
+      return redirect(res, '/admin/prospects?s=todo&ok=' + encodeURIComponent(add + ' adicionado(s)' + (dup ? ' · ' + dup + ' já estava(m) na lista' : '') + '.'));
+    }
+    if ((mm = p.match(/^\/admin\/prospects\/([A-Za-z0-9_-]+)(\/act|\/delete)?$/))) {
+      const list = db().prospects || []; const x = list.find((y) => y.id === mm[1]);
+      if (!x) return html(res, 404, page({ title: 'Prospect', nav: NAV('pro'), body: '<h1>Prospect não encontrado</h1>' }));
+      const BU = PUBLIC_URL + '/briefing';
+      if (mm[2] === '/act' && m === 'POST') {
+        const f = form(await readBody(req, 5000));
+        if (f.a === 'sent') {
+          const kind = PR.KIND_LABEL[f.kind] ? f.kind : PR.nextKind(x); const url = PR.waUrl(x, kind, BU);
+          PR.act(x, 'sent', { kind }); store.save();
+          if (x.phone && (x.channel === 'whatsapp' || x.channel === 'phone' || !x.channel)) return redirect(res, url);
+          return redirect(res, '/admin/prospects/' + x.id + '?ok=' + encodeURIComponent('Registrado. Copie a mensagem abaixo e mande por ' + (PR.CHANNELS[x.channel] || 'mensagem') + '.') + '&k=' + kind);
+        }
+        PR.act(x, f.a, f); store.save();
+        const back = String(req.headers.referer || ''); return redirect(res, /\/admin\/prospects/.test(back) ? back.replace(/^https?:\/\/[^/]+/, '').replace(/([?&])ok=[^&]*&?/, '$1') : '/admin/prospects');
+      }
+      if (mm[2] === '/delete' && m === 'POST') { db().prospects = list.filter((y) => y !== x); store.save(); return redirect(res, '/admin/prospects?ok=' + encodeURIComponent(x.name + ' apagado.')); }
+      if (m === 'POST') {
+        const raw = await readBody(req, 50000); const f = Object.fromEntries(new URLSearchParams(raw.toString('utf8'))); f.signals = new URLSearchParams(raw.toString('utf8')).getAll('signals');
+        PR.clean(f, x); store.save(); return redirect(res, '/admin/prospects/' + x.id + '?ok=' + encodeURIComponent('Salvo.'));
+      }
+      const k = PR.KIND_LABEL[u.searchParams.get('k')] ? u.searchParams.get('k') : PR.nextKind(x);
+      const msgs = ['intro', 'briefing', 'reminder', 'proposal'].map((kk) => `<details${kk === k ? ' open' : ''} style="margin:0 0 8px"><summary style="cursor:pointer;font-weight:600;padding:6px 0">${esc(PR.KIND_LABEL[kk])}</summary><p class="msgprev">${esc(PR.message(x, kk, BU))}</p><div class="row" style="margin-top:8px"><button type="button" class="btn sm" onclick="navigator.clipboard.writeText(this.closest('details').querySelector('.msgprev').textContent);this.textContent='Copiado ✓'">Copiar</button>${x.phone ? `<form method="post" action="/admin/prospects/${x.id}/act" target="_blank" onsubmit="setTimeout(function(){location.reload()},1500)" style="margin:0"><input type="hidden" name="a" value="sent"><input type="hidden" name="kind" value="${kk}"><button class="btn sm wa">Abrir no WhatsApp e registrar</button></form>` : ''}</div></details>`).join('');
+      const body = `${flash ? `<div class="flash">${esc(flash)}</div>` : ''}<p style="margin:22px 0 0"><a class="mono muted" href="/admin/prospects">← Prospects</a></p>
+<h1>${esc(x.name)}</h1><p class="sub"><span class="${(PR.STATUS[x.status] || PR.STATUS.todo).c}">${esc((PR.STATUS[x.status] || PR.STATUS.todo).pt)}</span> · adicionado em ${fdate(x.at.slice(0, 10), 'pt')}${x.nextAt ? ' · próximo passo ' + fdate(x.nextAt, 'pt') : ''}</p>
+<div class="row" style="margin:0 0 18px">${x.maps ? `<a class="btn sm" href="${esc(x.maps)}" target="_blank" rel="noopener">Google Maps</a>` : ''}${x.instagram ? `<a class="btn sm" href="https://instagram.com/${esc(x.instagram.replace(/^@/, ''))}" target="_blank" rel="noopener">Instagram</a>` : ''}${x.website ? `<a class="btn sm" href="${esc(/^https?:/.test(x.website) ? x.website : 'https://' + x.website)}" target="_blank" rel="noopener">Site atual</a>` : ''}${x.briefingId ? `<a class="btn sm pri" href="/admin/briefings/${x.briefingId}">Ver briefing</a>` : ''}</div>
+<div class="plist" style="margin:0 0 8px">${PR.row(x, BU)}</div>
+<h2>Mensagens prontas</h2><div class="panel">${msgs}</div>
+<h2>Dados</h2><form class="f panel" method="post" action="/admin/prospects/${x.id}">${PR.formFields(x)}<div class="two"><label>E-mail<input name="email" type="email" value="${esc(x.email || '')}"></label><label>Próximo passo em<input name="nextAt" type="date" value="${esc(x.nextAt || '')}"></label></div><label>Notas<textarea name="notes" rows="3">${esc(x.notes || '')}</textarea></label><div class="row"><button class="btn pri">Salvar</button></div></form>
+<h2>Histórico</h2><div class="panel"><ul class="plog">${(x.log || []).map((l) => `<li><span class="mono">${esc(new Date(l.at).toLocaleDateString('pt-BR', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit' }))} ${esc(new Date(l.at).toLocaleTimeString('pt-BR', { timeZone: 'Europe/Brussels', hour: '2-digit', minute: '2-digit' }))}</span><span>${esc(l.text)}</span></li>`).join('')}</ul></div>
+<form method="post" action="/admin/prospects/${x.id}/delete" style="margin:36px 0 0" onsubmit="return confirm('Apagar ${esc(x.name).replace(/'/g, '')}?')"><button class="btn danger sm">Apagar da lista</button></form>`;
+      return html(res, 200, page({ title: x.name + ' · Prospect', nav: NAV('pro'), body, head: '<style>' + PR.CSS + '</style>' }));
+    }
     // ----- briefings (painel) -----
     if (p === '/admin/briefings' && m === 'GET') {
       const list = db().briefings || [];
