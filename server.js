@@ -17,6 +17,7 @@ const NT = require('./lib/notify');
 const RV = require('./lib/reviews');
 const BK = require('./lib/backup');
 const BANK = require('./lib/bank');
+const ESP = require('./lib/espace');
 const PAUSE_TPL = fs.readFileSync(path.join(__dirname, 'integrations', 'pause-page.html'), 'utf8');
 // script para sites estáticos: contador de visitas + pausa do lado do visitante quando a mensalidade está suspensa
 const SITE_JS = "(function(){var s=document.currentScript,k=s&&s.dataset.key,o=s&&s.src.replace(/\\/site\\.js.*$/,'');if(!k)return;var a=document.createElement('script');a.src=o+'/a.js';a.dataset.key=k;a.defer=true;document.head.appendChild(a);function chk(){fetch(o+'/api/status/'+k,{cache:'no-store'}).then(function(r){return r.json()}).then(function(j){if(j.status==='suspended')return fetch(o+'/pause/'+k).then(function(r){return r.text()}).then(function(h){document.open();document.write(h);document.close()})}).catch(function(){})}chk();setInterval(chk,300000)})();";
@@ -86,6 +87,10 @@ const LT = {
   pt: { title: 'Área do cliente', h: 'Área do cliente', sub: 'Sua carteirinha, seus pagamentos e os números do seu site.', id: 'Login', idp: 'DRT-100 ou seu e-mail', pw: 'Senha', go: 'Entrar', bad: 'Login ou senha incorretos.', many: 'Muitas tentativas. Tente de novo em 15 minutos.', lost: 'Esqueceu a senha? Fale com a gente no WhatsApp.', out: 'Sair', back: '← drtcreation.com' },
   en: { title: 'Client area', h: 'Client area', sub: 'Your card, your payments and your website figures.', id: 'Login', idp: 'DRT-100 or your e-mail', pw: 'Password', go: 'Sign in', bad: 'Incorrect login or password.', many: 'Too many attempts. Try again in 15 minutes.', lost: 'Forgot your password? Message us on WhatsApp.', out: 'Sign out', back: '← drtcreation.com' },
 };
+function espCtx(c, flash) {
+  const set = S(); const wa = set.whatsapp ? set.whatsapp.replace(/\D/g, '') : '';
+  return { status: st(c), ogm, flash: flash || '', hasPdf: fs.existsSync(path.join(__dirname, 'contracts', 'DRT-' + c.no + '.pdf')), waUrl: wa ? (txt) => 'https://wa.me/' + wa + '?text=' + encodeURIComponent(txt + ' (' + c.name + ', DRT-' + c.no + ')') : null };
+}
 function clientLoginPage(lang, err, idv) {
   const t = LT[lang] || LT.fr; const set = S();
   const wa = set.whatsapp ? 'https://wa.me/' + set.whatsapp.replace(/\D/g, '') : '';
@@ -124,6 +129,7 @@ function recordPayment(c, { months, amount, method, ref, date, note }) {
   db().payments.push(p);
   store.log('payment', c.id, `${eur(p.amount, 'pt')} · ${months} ${months > 1 ? 'meses' : 'mês'} · ${method} → pago até ${fdate(c.paidUntil, 'pt')}`);
   store.save();
+  ESP.invoiceNo(p);
   return p;
 }
 function slug(s) { return String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 30) || 'cliente'; }
@@ -234,6 +240,8 @@ function clientPage(c, flash) {
 <label>Referência / nota<input name="ref" placeholder="${esc(ogm(c, s.due))}"></label>
 <button class="btn pri">✓ Registrar e liberar</button></form></div></div>
 
+<h2>Pedidos do cliente</h2>${(() => { const rq = db().requests.filter((r) => r.clientId === c.id).sort((a, b) => b.at.localeCompare(a.at)); return rq.length ? rq.map((r) => `<div class="panel" style="margin-bottom:10px"><div class="row" style="justify-content:space-between"><b>${esc(r.title)}</b><span class="muted mono">${esc(r.at.slice(0, 16).replace('T', ' '))}${r.urgency === 'urgent' ? ' · <span class="s-grace">URGENTE</span>' : ''}</span></div>${r.text ? `<p class="muted" style="white-space:pre-wrap;margin:8px 0">${esc(r.text)}</p>` : ''}
+<form class="f" method="post" action="/admin/c/${c.id}/rq/${r.id}" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));align-items:end"><label>Status<select name="status">${[['new', 'Recebido'], ['doing', 'Em andamento'], ['done', 'Concluído']].map(([k, v]) => `<option value="${k}"${r.status === k ? ' selected' : ''}>${v}</option>`).join('')}</select></label><label>Tempo (min)<input name="min" type="number" min="0" step="5" value="${Math.round((r.hours || 0) * 60)}"></label><label style="grid-column:1/-1">Resposta ao cliente<input name="reply" value="${esc(r.reply || '')}"></label><button class="btn sm pri">Salvar</button></form></div>`).join('') : '<p class="muted">Nenhum pedido.</p>'; })()}
 <h2>Acesso à área do cliente</h2>
 <div class="panel"><p style="margin:0 0 10px">Endereço: <b class="mono">${esc(PUBLIC_URL)}/login</b> · login: <b class="mono">${loginOf(c)}</b>${c.email ? ' ou <span class="mono">' + esc(c.email) + '</span>' : ''} · senha: ${c.passHash ? 'definida' : '<b>ainda não definida</b>'}</p>
 <form method="post" action="/admin/c/${c.id}/password" style="margin:0"><button class="btn sm">${c.passHash ? 'Gerar nova senha' : 'Gerar senha'}</button> <span class="muted" style="font-size:13px">A senha aparece uma única vez; a anterior deixa de funcionar.</span></form></div>
@@ -503,6 +511,30 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { result: stripeEvent(ev) });
     }
 
+    // ----- espace client: ações -----
+    if (p.startsWith('/espace/')) {
+      const c = clientFromSession(req); const ql = u.searchParams.get('lang'); const lang = ql === 'pt' || ql === 'fr' ? ql : (c ? c.lang : 'fr');
+      if (!c) return redirect(res, '/login?lang=' + lang);
+      if (p === '/espace/contrat.pdf') { const f = path.join(__dirname, 'contracts', 'DRT-' + c.no + '.pdf'); if (!fs.existsSync(f)) return html(res, 404, 'PDF'); res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Disposition': 'inline; filename="Contrat-DRT-' + c.no + '.pdf"', 'Cache-Control': 'private, no-store', ...SEC }); return fs.createReadStream(f).pipe(res); }
+      if ((mm = p.match(/^\/espace\/facture\/([A-Za-z0-9_-]+)$/))) { const pay = db().payments.find((x) => x.id === mm[1] && x.clientId === c.id); if (!pay) return html(res, 404, 'Facture introuvable'); return html(res, 200, ESP.invoice(c, pay, lang)); }
+      if (m === 'POST' && !sameOrigin(req)) return html(res, 403, 'Origine invalide');
+      if (p === '/espace/demande' && m === 'POST') {
+        const f = form(await readBody(req, 20000)); const title = String(f.title || '').trim().slice(0, 120); if (!title) return redirect(res, '/espace?lang=' + lang + '#demandes');
+        const r = { id: store.id(6), clientId: c.id, at: new Date().toISOString(), title, text: String(f.text || '').slice(0, 4000), urgency: f.urgency === 'urgent' ? 'urgent' : 'normal', status: 'new', hours: 0, reply: '' };
+        db().requests.push(r); store.log('request', c.id, 'Novo pedido: ' + title + (r.urgency === 'urgent' ? ' (URGENTE)' : '')); store.save();
+        NT.toAdmin({ subject: (r.urgency === 'urgent' ? '[URGENTE] ' : '') + 'Pedido de ' + c.name + ': ' + title, text: `${c.name} (DRT-${c.no}) · ${title}\n\n${r.text}\n\n${PUBLIC_URL}/admin/c/${c.id}` }).catch(() => {});
+        return redirect(res, '/espace?lang=' + lang + '&ok=rq#demandes');
+      }
+      if (p === '/espace/password' && m === 'POST') {
+        const f = form(await readBody(req, 4000));
+        if (!checkPw(f.current || '', c.passHash)) return redirect(res, '/espace?lang=' + lang + '&ok=pwbad#compte');
+        if (String(f.next || '').length < 8) return redirect(res, '/espace?lang=' + lang + '&ok=pwshort#compte');
+        c.passHash = hashPw(f.next); store.log('client', c.id, 'Senha alterada pelo cliente'); store.save();
+        return redirect(res, '/espace?lang=' + lang + '&ok=pw#compte', { 'Set-Cookie': CCOOKIE(mkClientSession(c), 30 * 86400) });
+      }
+      return html(res, 404, 'Page introuvable');
+    }
+    if ((mm = p.match(/^\/fonts\/(archivo|instrument-sans|jetbrains-mono)\.woff2$/))) { res.writeHead(200, { 'Content-Type': 'font/woff2', 'Cache-Control': 'public, max-age=31536000, immutable', 'Access-Control-Allow-Origin': '*' }); return fs.createReadStream(path.join(__dirname, 'public', 'fonts', mm[1] + '.woff2')).pipe(res); }
     // ----- espace client -----
     if (p === '/login' || p === '/espace' || p === '/logout') {
       const ql = u.searchParams.get('lang'); const lang = LT[ql] ? ql : 'fr';
@@ -510,7 +542,7 @@ const server = http.createServer(async (req, res) => {
       if (p === '/espace') {
         const c = clientFromSession(req); if (!c) return redirect(res, '/login?lang=' + lang);
         const cl = ql === 'pt' || ql === 'fr' ? ql : c.lang;
-        return html(res, 200, cardPage(c, cl, true));
+        return html(res, 200, ESP.render(c, cl, espCtx(c, u.searchParams.get('ok'))));
       }
       if (m === 'GET' || m === 'HEAD') { if (clientFromSession(req)) return redirect(res, '/espace' + (ql ? '?lang=' + ql : '')); return html(res, 200, clientLoginPage(lang)); }
       if (m === 'POST') {
@@ -553,6 +585,15 @@ const server = http.createServer(async (req, res) => {
 <div class="panel"><p style="margin:0 0 8px">Login: <b class="mono">${loginOf(c)}</b></p><p style="margin:0 0 14px">Senha: <b class="mono" style="font-size:20px">${esc(pw)}</b></p>
 <div class="copy"><input readonly value="${esc(msg)}" onclick="this.select()">${c.phone ? `<a class="btn sm" target="_blank" rel="noopener" href="https://wa.me/${c.phone.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}">Enviar por WhatsApp</a>` : ''}</div>
 <p style="margin:16px 0 0"><a class="btn" href="/admin/c/${c.id}">← Voltar ao cliente</a></p></div>` }));
+    }
+    if ((mm = p.match(/^\/admin\/c\/([A-Za-z0-9_-]+)\/rq\/([A-Za-z0-9_-]+)$/)) && m === 'POST' && isAdmin(req)) {
+      const c = db().clients.find((x) => x.id === mm[1]); const r = db().requests.find((x) => x.id === mm[2] && c && x.clientId === c.id); if (!r) return html(res, 404, 'Pedido não encontrado');
+      const f = form(await readBody(req)); const was = r.status;
+      r.status = ['new', 'doing', 'done'].includes(f.status) ? f.status : r.status; r.hours = Math.max(0, Math.min(100, (Number(f.min) || 0) / 60)); r.reply = String(f.reply || '').slice(0, 2000);
+      if (r.status === 'done' && was !== 'done') r.doneAt = B.today();
+      store.log('request', c.id, 'Pedido "' + r.title + '" → ' + r.status); store.save();
+      if (r.status === 'done' && was !== 'done' && c.email) NT.email(c.email, (c.lang === 'pt' ? 'Pedido concluído: ' : 'Demande terminée : ') + r.title, `<p>${esc(r.title)}</p>${r.reply ? '<p>' + esc(r.reply) + '</p>' : ''}<p><a href="${PUBLIC_URL}/login">${PUBLIC_URL}/login</a></p>`, r.title).catch(() => {});
+      return redirect(res, '/admin/c/' + c.id + '?ok=Pedido%20atualizado');
     }
     if (p === '/admin/logout' && m === 'POST') return redirect(res, '/admin', { 'Set-Cookie': COOKIE('', 0) });
     if (!isAdmin(req)) return html(res, 200, loginPage());
