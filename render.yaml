@@ -17,7 +17,7 @@ services:
       - key: DATA_DIR
         value: /data
       - key: PUBLIC_URL
-        value: https://drt-clientes-i1nj.onrender.com
+        value: https://clientes.drtcreation.com
       - key: ADMIN_PASSWORD
         sync: false          # o Render pede a senha do painel na hora de criar
       - key: APP_SECRET
