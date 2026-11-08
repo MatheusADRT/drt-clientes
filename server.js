@@ -154,6 +154,8 @@ function cleanClient(f, c) {
   c.notes = String(f.notes || '').slice(0, 2000);
   c.googlePlaceId = /^[A-Za-z0-9_-]{10,200}$/.test(f.googlePlaceId || '') ? f.googlePlaceId : '';
   c.stripeLinkYear = /^https:\/\/(buy|checkout)\.stripe\.com\/[^\s"'<>]+$/.test(f.stripeLinkYear || '') ? f.stripeLinkYear : '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(f.contractStart || '')) c.contractStart = f.contractStart; else if (f.contractStart === '') delete c.contractStart;
+  if (f.activate === '1' && c.override === 'paused' && c.contractStart) { c.override = 'auto'; c.paidUntil = B.addDays(c.contractStart, -1); c.dueDay = Number(c.contractStart.slice(8, 10)); store.log('client', c.id, 'Cobrança ativada a partir de ' + c.contractStart); }
   return c;
 }
 
@@ -210,6 +212,8 @@ function clientForm(c, isNew) {
 <div class="two"><label>Mensalidade (€)<input name="amount" inputmode="decimal" required value="${c.amount != null ? (c.amount / 100).toFixed(2).replace(/\.00$/, '') : ''}" placeholder="249"></label>
 <label>Dia do vencimento<input name="dueDay" type="number" min="1" max="31" required value="${v('dueDay', 1)}"></label>
 ${isNew ? `<label>Primeiro vencimento<input name="firstDue" type="date" required value="${esc(c.firstDue || '')}"><small>A data em que a primeira mensalidade deve ser paga.</small></label>` : ''}
+<label>Início do contrato<input name="contractStart" type="date" value="${esc(c.contractStart || '')}"><small>Começo dos 12 meses firmes (aparece na área do cliente e na carteirinha).</small></label>
+${!isNew && c.override === 'paused' ? `<label style="display:flex;gap:10px;align-items:center;font-weight:600"><input type="checkbox" name="activate" value="1" style="width:auto"> Ativar a cobrança a partir do início do contrato <small>(primeiro vencimento = data de início; lembretes e pausa automática passam a valer)</small></label>` : ''}
 <label>Carência (dias)<input name="graceDays" type="number" min="0" max="30" value="${c.graceDays != null ? c.graceDays : ''}" placeholder="padrão: ${S().graceDays}"><small>Depois do vencimento, antes do site cair.</small></label></div>
 <div class="two"><label>Pessoa de contato<input name="contactName" value="${v('contactName')}"></label>
 <label>WhatsApp<input name="phone" inputmode="tel" value="${v('phone')}" placeholder="+32 4.."></label>
