@@ -64,9 +64,9 @@ test('proposta: criar do briefing, editar, rascunho fechado, enviar, ver, aceita
   const f2 = new URLSearchParams({ lang: 'pt', validUntil: '2099-01-01', company: 'Café Bom', contact: 'Léa', email: '', phone: '0470 00 00 09', intro: '', plan: 'site', monthly: '69', weeks: '4', payTerms: '50/50', financing: 'both', subMonths: '24', subMonthly: '' });
   f2.append('il', 'Site'); f2.append('id', ''); f2.append('iq', '1'); f2.append('ip', '1500');
   await post('/admin/proposals/' + pid, f2);
-  d = dbf(); const p2 = d.proposals[0]; assert.equal(PP.totals(p2).sub, 129); assert.equal(PP.totals(p2).subTotal, 3096);
+  d = dbf(); const p2 = d.proposals[0]; assert.equal(PP.totals(p2).sub, 139); assert.equal(PP.totals(p2).subTotal, 3336);
   const h2 = PP.render({ ...p2, status: 'sent' }, {});
-  assert.match(h2, /Duas formas de pagar/); assert.match(h2, /Sem entrada/); assert.match(h2, /129\s?€/); assert.match(h2, /name="opt" value="monthly"/); assert.match(h2, /3\s?096\s?€/);
+  assert.match(h2, /Duas formas de pagar/); assert.match(h2, /Sem entrada/); assert.match(h2, /139\s?€/); assert.match(h2, /name="opt" value="monthly"/); assert.match(h2, /3\s?336\s?€/);
   await post('/admin/catalog', { c_site: '1400', c_logo: 'abc' });
   d = dbf(); assert.equal(d.settings.catalogPrices.site, 1400); assert.equal(d.settings.catalogPrices.logo, undefined);
 });
@@ -76,5 +76,5 @@ test('proposta: aceite sem entrada exige escolher a forma', async () => {
   const p = { lang: 'fr', status: 'sent', token: 'x'.repeat(18), no: 'P1', client: { company: 'A', contact: 'B' }, items: [{ label: 'Site', qty: 1, price: 1500 }], plan: 'site', monthly: 69, weeks: 4, financing: 'monthly', subMonths: 12 };
   const h = PPm.render(p, {});
   assert.match(h, /Sans apport/); assert.match(h, /pendant 12 mois/); assert.doesNotMatch(h, /name="opt"/);
-  assert.equal(PPm.totals(p).sub, 189);
+  assert.equal(PPm.totals(p).sub, 209);
 });
