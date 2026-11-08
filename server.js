@@ -18,6 +18,7 @@ const RV = require('./lib/reviews');
 const BK = require('./lib/backup');
 const BANK = require('./lib/bank');
 const ESP = require('./lib/espace');
+const BC = require('./lib/brandcard');
 const PAUSE_TPL = fs.readFileSync(path.join(__dirname, 'integrations', 'pause-page.html'), 'utf8');
 // script para sites estáticos: contador de visitas + pausa do lado do visitante quando a mensalidade está suspensa
 const SITE_JS = "(function(){var s=document.currentScript,k=s&&s.dataset.key,o=s&&s.src.replace(/\\/site\\.js.*$/,'');if(!k)return;var a=document.createElement('script');a.src=o+'/a.js';a.dataset.key=k;a.defer=true;document.head.appendChild(a);function chk(){fetch(o+'/api/status/'+k,{cache:'no-store'}).then(function(r){return r.json()}).then(function(j){if(j.status==='suspended')return fetch(o+'/pause/'+k).then(function(r){return r.text()}).then(function(h){document.open();document.write(h);document.close()})}).catch(function(){})}chk();setInterval(chk,300000)})();";
@@ -186,17 +187,19 @@ function dashboard(flash) {
   const cashed = db().payments.filter((p) => p.date.slice(0, 7) === month).reduce((t, p) => t + p.amount, 0);
   const body = `${flash ? `<div class="flash">${esc(flash)}</div>` : ''}
 <h1>Clientes</h1><p class="sub">${cs.length} ${cs.length === 1 ? 'cliente' : 'clientes'} · hoje ${fdate(B.today(), 'pt', 1)}</p>
-<div class="stats"><div class="stat"><span class="lab">Receita mensal</span><b>${eur(mrr, 'pt')}</b></div>
+<div class="stats"><div class="stat"><span class="lab">Receita mensal ativa</span><b>${eur(mrr, 'pt')}</b><span class="muted" style="font-size:12px">potencial ${eur(rows.reduce((t, r) => t + r.c.amount, 0), 'pt')} · ${eur(rows.reduce((t, r) => t + r.c.amount, 0) * 12, 'pt')}/ano</span></div>
 <div class="stat"><span class="lab">Recebido em ${fdate(month + '-01', 'pt', 1).replace(/^1 de /, '')}</span><b>${eur(cashed, 'pt')}</b></div>
 <div class="stat"><span class="lab">Em atraso</span><b class="${late.length ? 's-grace' : ''}">${late.length}</b></div>
 <div class="stat"><span class="lab">Sites fora do ar</span><b class="${rows.some((r) => r.s.status === 'suspended') ? 's-suspended' : ''}">${rows.filter((r) => r.s.status === 'suspended').length}</b></div></div>
+${(() => { const open = db().requests.filter((r) => r.status !== 'done').sort((a, b) => (b.urgency === 'urgent') - (a.urgency === 'urgent') || a.at.localeCompare(b.at)); return open.length ? `<h2>Pedidos em aberto (${open.length})</h2><div class="tbl"><table><tr><th>Cliente</th><th>Pedido</th><th>Desde</th><th>Status</th></tr>${open.map((r) => { const c = byId(r.clientId); return `<tr><td>${c ? `<a href="/admin/c/${c.id}">${esc(c.name)}</a>` : ''}</td><td>${r.urgency === 'urgent' ? '<b class="s-grace">URGENTE · </b>' : ''}${esc(r.title)}</td><td class="mono muted">${esc(r.at.slice(0, 10))}</td><td>${r.status === 'doing' ? '<span class="s-soon">Em andamento</span>' : '<span class="s-ok">Novo</span>'}</td></tr>`; }).join('')}</table></div>` : ''; })()}
+<h2>Visão geral</h2><div class="tbl"><table><tr><th>Cliente</th><th>Status</th><th>Mensalidade</th><th>Pago até</th><th>Sites</th><th>Visitantes 30 d</th><th>Pedidos</th><th></th></tr>${rows.map(({ c, s }) => { const U = UP.summary(c.id, 30); const S2 = ST.summary(c.id, 30); const nrq = db().requests.filter((r) => r.clientId === c.id && r.status !== 'done').length; return `<tr><td><a href="/admin/c/${c.id}"><b>${esc(c.name)}</b></a><br><span class="mono muted">DRT-${c.no}</span></td><td><span class="s-${s.status}">${esc(STATUS[s.status].pt)}</span></td><td>${eur(c.amount, 'pt')}</td><td>${fdate(c.paidUntil, 'pt')}</td><td>${U.hasData ? (U.down ? '<span class="s-suspended">● fora do ar</span>' : `<span class="s-ok">●</span> ${String(U.uptimePct).replace('.', ',')} %`) : '<span class="muted">—</span>'}</td><td>${S2.hasData ? S2.visitors : '<span class="muted">—</span>'}</td><td>${nrq || '<span class="muted">0</span>'}</td><td><a class="btn sm" href="/admin/c/${c.id}/espace" target="_blank">Ver como cliente</a></td></tr>`; }).join('')}</table></div>
 <h2>Carteirinhas</h2>
-${rows.length ? `<div class="grid">${rows.map(({ c, s }) => `<div>${card(c, s, 'pt', '/admin/c/' + c.id)}
+${rows.length ? `<div class="grid">${rows.map(({ c, s }) => `<div><a href="/admin/c/${c.id}" style="display:block;text-decoration:none" onclick="event.preventDefault();location.href=this.href">${BC.brandCard(c, s, 'pt', { validUntil: ESP.contractInfo(c).end, support: S().whatsapp }).replace(/ onclick="[^"]*"/, '').replace(/ onkeydown="[^"]*"/, '').replace(/<span class="bc-hint">[^<]*<\/span>/, '')}</a>
 <div class="card-meta"><span class="s-${s.status}">${esc(STXT(s))}</span></div>
 <div class="card-actions"><form method="post" action="/admin/c/${c.id}/pay" style="margin:0"><input type="hidden" name="months" value="1"><input type="hidden" name="method" value="virement"><button class="btn sm pri" title="Registra 1 mês pago por transferência">✓ Pago 1 mês</button></form>
 <a class="btn sm" href="/admin/c/${c.id}">Abrir</a>${c.phone ? `<a class="btn sm" href="${esc(waLink(c, s))}" target="_blank" rel="noopener">Lembrete WhatsApp</a>` : ''}</div></div>`).join('')}</div>`
     : `<div class="panel"><p>Nenhum cliente ainda.</p><a class="btn pri" href="/admin/new">Cadastrar o primeiro</a></div>`}`;
-  return page({ title: 'Clientes · DRT Creation', body, nav: NAV('home') });
+  return page({ title: 'Clientes · DRT Creation', body, nav: NAV('home'), head: '<style>' + BC.CSS + '.bc{justify-self:start}</style>' });
 }
 
 function clientForm(c, isNew) {
@@ -242,7 +245,7 @@ function clientPage(c, flash) {
 
 <h2>Pedidos do cliente</h2>${(() => { const rq = db().requests.filter((r) => r.clientId === c.id).sort((a, b) => b.at.localeCompare(a.at)); return rq.length ? rq.map((r) => `<div class="panel" style="margin-bottom:10px"><div class="row" style="justify-content:space-between"><b>${esc(r.title)}</b><span class="muted mono">${esc(r.at.slice(0, 16).replace('T', ' '))}${r.urgency === 'urgent' ? ' · <span class="s-grace">URGENTE</span>' : ''}</span></div>${r.text ? `<p class="muted" style="white-space:pre-wrap;margin:8px 0">${esc(r.text)}</p>` : ''}
 <form class="f" method="post" action="/admin/c/${c.id}/rq/${r.id}" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));align-items:end"><label>Status<select name="status">${[['new', 'Recebido'], ['doing', 'Em andamento'], ['done', 'Concluído']].map(([k, v]) => `<option value="${k}"${r.status === k ? ' selected' : ''}>${v}</option>`).join('')}</select></label><label>Tempo (min)<input name="min" type="number" min="0" step="5" value="${Math.round((r.hours || 0) * 60)}"></label><label style="grid-column:1/-1">Resposta ao cliente<input name="reply" value="${esc(r.reply || '')}"></label><button class="btn sm pri">Salvar</button></form></div>`).join('') : '<p class="muted">Nenhum pedido.</p>'; })()}
-<h2>Acesso à área do cliente</h2>
+<h2>Acesso à área do cliente <a class="btn sm" href="/admin/c/${c.id}/espace" target="_blank" style="margin-left:10px;vertical-align:middle">Ver como o cliente</a></h2>
 <div class="panel"><p style="margin:0 0 10px">Endereço: <b class="mono">${esc(PUBLIC_URL)}/login</b> · login: <b class="mono">${loginOf(c)}</b>${c.email ? ' ou <span class="mono">' + esc(c.email) + '</span>' : ''} · senha: ${c.passHash ? 'definida' : '<b>ainda não definida</b>'}</p>
 <form method="post" action="/admin/c/${c.id}/password" style="margin:0"><button class="btn sm">${c.passHash ? 'Gerar nova senha' : 'Gerar senha'}</button> <span class="muted" style="font-size:13px">A senha aparece uma única vez; a anterior deixa de funcionar.</span></form></div>
 
@@ -545,13 +548,18 @@ const server = http.createServer(async (req, res) => {
         const cl = ql === 'pt' || ql === 'fr' ? ql : c.lang;
         return html(res, 200, ESP.render(c, cl, espCtx(c, u.searchParams.get('ok'))));
       }
-      if (m === 'GET' || m === 'HEAD') { if (clientFromSession(req)) return redirect(res, '/espace' + (ql ? '?lang=' + ql : '')); return html(res, 200, clientLoginPage(lang)); }
+      if (m === 'GET' || m === 'HEAD') { if (clientFromSession(req)) return redirect(res, '/espace' + (ql ? '?lang=' + ql : '')); if (isAdmin(req) && !u.searchParams.has('client')) return redirect(res, '/admin'); return html(res, 200, clientLoginPage(lang)); }
       if (m === 'POST') {
         if (!sameOrigin(req)) return html(res, 403, 'Origine invalide');
         const t = LT[lang]; const k = 'c|' + ip(req); const tr = tries.get(k) || { n: 0, at: Date.now() };
         if (Date.now() - tr.at > 15 * 60000) { tr.n = 0; tr.at = Date.now(); }
         if (tr.n >= 8) return html(res, 429, clientLoginPage(lang, t.many));
         const f = form(await readBody(req, 4000));
+        const who = String(f.login || '').trim().toLowerCase();
+        if (ADMIN_PASSWORD && ['admin', 'dono', 'owner', 'drt', 'matheus', 'contact@drtcreation.com', (process.env.ADMIN_EMAIL || '').toLowerCase()].filter(Boolean).includes(who)) {
+          if (same(f.password || '', ADMIN_PASSWORD)) { tries.delete(k); store.log('admin', null, 'Login do dono pela área do cliente'); store.save(); return redirect(res, '/admin', { 'Set-Cookie': COOKIE(mkSession(), 30 * 86400) }); }
+          tr.n++; tries.set(k, tr); return html(res, 401, clientLoginPage(lang, t.bad, f.login));
+        }
         const c = findClientLogin(f.login);
         if (c && checkPw(f.password || '', c.passHash)) { tries.delete(k); store.log('client', c.id, 'Acesso à área do cliente'); store.save(); return redirect(res, '/espace' + (ql ? '?lang=' + ql : ''), { 'Set-Cookie': CCOOKIE(mkClientSession(c), 30 * 86400) }); }
         tr.n++; tries.set(k, tr); return html(res, 401, clientLoginPage(lang, t.bad, f.login));
@@ -595,6 +603,12 @@ const server = http.createServer(async (req, res) => {
       store.log('request', c.id, 'Pedido "' + r.title + '" → ' + r.status); store.save();
       if (r.status === 'done' && was !== 'done' && c.email) NT.email(c.email, (c.lang === 'pt' ? 'Pedido concluído: ' : 'Demande terminée : ') + r.title, `<p>${esc(r.title)}</p>${r.reply ? '<p>' + esc(r.reply) + '</p>' : ''}<p><a href="${PUBLIC_URL}/login">${PUBLIC_URL}/login</a></p>`, r.title).catch(() => {});
       return redirect(res, '/admin/c/' + c.id + '?ok=Pedido%20atualizado');
+    }
+    if ((mm = p.match(/^\/admin\/c\/([A-Za-z0-9_-]+)\/espace$/)) && m === 'GET' && isAdmin(req)) {
+      const c = db().clients.find((x) => x.id === mm[1]); if (!c) return html(res, 404, 'Cliente não encontrado');
+      const ql = u.searchParams.get('lang'); const cl = ql === 'pt' || ql === 'fr' ? ql : c.lang;
+      const page2 = ESP.render(c, cl, espCtx(c, '')).replace('<body>', `<body><div style="position:sticky;top:0;z-index:9;background:#ffcf4a;color:#07141a;font:700 12px/1 var(--mono,monospace);letter-spacing:.08em;text-transform:uppercase;padding:10px 16px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><span>Modo dono · você está vendo a área de ${esc(c.name)} como o cliente vê</span><a href="/admin/c/${c.id}" style="color:#07141a">← Voltar ao painel</a></div>`);
+      return html(res, 200, page2.replace(/action="\/espace\/(demande|password)/g, 'data-disabled="1" action="#'));
     }
     if (p === '/admin/logout' && m === 'POST') return redirect(res, '/admin', { 'Set-Cookie': COOKIE('', 0) });
     if (!isAdmin(req)) return html(res, 200, loginPage());
