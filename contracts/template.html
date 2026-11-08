@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Contrat de maintenance · DRT Creation</title>
+<style>
+@font-face{font-family:"Archivo";src:url(/fonts/archivo.woff2) format("woff2");font-weight:100 900;font-stretch:62% 125%}
+@font-face{font-family:"Instrument Sans";src:url(/fonts/instrument-sans.woff2) format("woff2");font-weight:400 700}
+@font-face{font-family:"JetBrains Mono";src:url(/fonts/jetbrains-mono.woff2) format("woff2");font-weight:100 800}
+:root{--bg:#07141a;--card:#0d1f28;--ink:#030a0e;--text:#dfe3e5;--accent:#7fa0ff;--deep:#1d44d6;--line:rgba(7,20,26,.14);--muted:#5b6a72;--paper:#fff}
+@page{size:A4;margin:0}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--paper);color:var(--ink);font:9.8pt/1.42 "Instrument Sans",Helvetica,Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.page{width:210mm;height:297mm;position:relative;overflow:hidden;page-break-after:always;display:flex;flex-direction:column}
+.page:last-child{page-break-after:auto}
+/* header band */
+.band,.sub,.foot{flex:none}
+.band{background:var(--bg);color:var(--text);padding:10mm 16mm 7mm;position:relative;overflow:hidden}
+.band::after{content:"";position:absolute;right:-30mm;top:-40mm;width:120mm;height:120mm;border-radius:50%;background:radial-gradient(circle,rgba(29,68,214,.55),transparent 65%);pointer-events:none}
+.band .top{display:flex;align-items:center;justify-content:space-between;position:relative}
+.logo{display:flex;align-items:center;gap:9px}
+.logo svg{width:34px;height:auto;fill:var(--accent)}
+.logo b{font:800 13pt/1 "Archivo",Arial,sans-serif;letter-spacing:.02em}
+.logo small{display:block;font:500 7pt/1 "JetBrains Mono",monospace;letter-spacing:.22em;color:var(--accent);margin-top:4px;text-transform:uppercase}
+.ref{font:500 7.5pt/1.6 "JetBrains Mono",monospace;color:#9eb0b8;text-align:right}
+.ref b{color:var(--text);font-weight:500}
+h1{font:800 21pt/1.05 "Archivo",Arial,sans-serif;margin:7mm 0 2mm;letter-spacing:-.01em;position:relative;max-width:120mm}
+h1 em{font-style:normal;color:var(--accent)}
+.band p{margin:0;color:#9eb0b8;max-width:130mm;position:relative}
+.sub{background:var(--card);color:var(--text);padding:3.2mm 16mm;display:flex;gap:5.5mm;white-space:nowrap;font-size:7pt;font:500 7.5pt/1.3 "JetBrains Mono",monospace;letter-spacing:.06em;color:#9eb0b8}
+.sub span b{color:var(--accent);font-weight:500;margin-right:5px}
+/* body */
+.body{padding:6mm 16mm 0;flex:1;display:flex;flex-direction:column;gap:4mm}
+.pg2 .body{padding-top:4.5mm;gap:2mm;font-size:9.1pt}
+.pg2 .note{font-size:8.6pt}
+.pg2 table{font-size:9.2pt}
+.pg2 th:nth-child(2),.pg2 td:nth-child(2){width:46mm}.pg2 th:nth-child(3),.pg2 td:nth-child(3){width:32mm}
+.pg2 p{margin-bottom:1.3mm}
+h2{font:800 9pt/1 "Archivo",Arial,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:var(--deep);margin:0 0 2.2mm;display:flex;align-items:center;gap:7px}
+h2::before{content:attr(data-n);font:500 7.5pt/1 "JetBrains Mono",monospace;color:#fff;background:var(--bg);border-radius:3px;padding:3px 5px 2px;letter-spacing:0}
+h2::after{content:"";flex:1;height:1px;background:var(--line)}
+p{margin:0 0 1.6mm}
+ul{margin:0 0 1.5mm;padding-left:0;list-style:none;columns:2;column-gap:7mm}
+li{position:relative;padding-left:4mm;margin-bottom:1mm;break-inside:avoid}
+li::before{content:"";position:absolute;left:0;top:.5em;width:6px;height:6px;border-radius:50%;background:var(--accent)}
+.note{color:var(--muted);font-size:9.3pt}
+table{width:100%;border-collapse:collapse;font-size:9.6pt}
+th,td{text-align:left;padding:1.5mm 2.5mm;border-bottom:1px solid var(--line);vertical-align:top}
+th{font:700 7.5pt/1.2 "Instrument Sans",sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);border-bottom:1.5px solid var(--bg)}
+td.k{color:var(--muted);width:30mm;font-weight:500}
+.field{display:inline-block;border-bottom:1px solid var(--ink);min-width:40mm;height:1.1em;vertical-align:bottom}
+.field.s{min-width:18mm}.field.l{min-width:62mm}
+.mono{font:500 9.3pt/1.4 "JetBrains Mono",monospace}
+.box{display:inline-block;width:3.2mm;height:3.2mm;border:1.2px solid var(--ink);border-radius:2px;vertical-align:-2px;margin-right:4px}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:6mm}
+.hl{background:#eef2ff;border-left:3px solid var(--deep);padding:1.6mm 2.6mm;border-radius:0 4px 4px 0}
+.hl b{color:var(--deep)}
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:3mm;margin:1mm 0 2mm}
+.step{background:var(--bg);color:var(--text);border-radius:5px;padding:2mm 2.8mm;position:relative}
+.step i{display:block;font:500 7pt/1 "JetBrains Mono",monospace;color:var(--accent);letter-spacing:.14em;margin-bottom:2mm}
+.step b{display:block;font:800 9.5pt/1.15 "Archivo",sans-serif;margin-bottom:1.2mm}
+.step span{font-size:8.3pt;color:#9eb0b8;line-height:1.35}
+.step.on{background:var(--deep)}.step.on i,.step.on span{color:#dfe3e5}
+.sig{display:grid;grid-template-columns:1fr 1fr;gap:8mm;margin-top:auto}
+.sig div{border-top:1.5px solid var(--bg);padding-top:2.5mm;position:relative}
+.stamp{position:absolute;right:6mm;top:50%;width:22mm;margin-top:-11mm;transform:rotate(-8deg);opacity:.9;mix-blend-mode:multiply;pointer-events:none}
+.sig h3{font:800 8pt/1 "Archivo",sans-serif;letter-spacing:.12em;text-transform:uppercase;margin:0 0 3mm;color:var(--deep)}
+.sig .ln{display:flex;justify-content:space-between;gap:4mm;margin-bottom:2.2mm;color:var(--muted);font-size:9pt}
+.sig .ln .field{flex:1;min-width:0}
+.sig .pad{height:24mm;border:1px dashed rgba(7,20,26,.25);border-radius:4px;margin-top:1mm}
+.foot{margin-top:auto;background:var(--bg);color:#9eb0b8;padding:3.5mm 16mm;display:flex;justify-content:space-between;font:500 7pt/1 "JetBrains Mono",monospace;letter-spacing:.08em}
+.foot b{color:var(--accent);font-weight:500}
+</style>
+</head>
+<body>
+
+<section class="page">
+  <header class="band">
+    <div class="top">
+      <div class="logo">
+        <svg viewBox="0 0 663 423.8" aria-hidden="true"><path d="M372 0L372.2 0.8L394.8 13.5L408.2 23L417.2 30.5L434.2 48L447.8 66.5L455 79.2L463 98.5L468 116.2L470 126.8L471.8 144L471.8 160.2L470 179.8L466.8 196L462 211.5L452.8 230.8L453 346L509.2 423.2L561.2 423.5L562.2 421.8L562 92.5L563 91.5L662.5 91.5L662.8 0.8L662 0ZM0.2 0.5L0 416.5L0.8 423.5L103 423.5L128.5 422.8L156 419.5L171.8 416.5L191.8 410.5L209.5 402.5L223.5 393.8L237.2 381.2L244.8 371.2L249.5 361.5L252.5 348.2L252.5 289.8L253.5 288.5L269.2 288.5L271 290L306.2 345.5L357.8 423.2L463.8 423.2L389.2 318L357 273.8L357.5 272.8L363.2 271.5L373.8 267.5L389.5 258.8L403.5 248L415.5 235.5L425.5 221L431.5 208.8L436.5 194.2L440.5 176L441.8 167L442.5 153L441.8 136.2L439.8 123.8L435.5 108L428.5 91L419.2 75L409.8 62.5L394.5 47L385.8 39.8L371.5 30.2L358.5 23.2L344.5 17.2L314.5 8.2L283.5 3L262.5 1L233.8 0L1.2 0ZM326.2 109.8L331.5 115.2L336.8 122.5L341 130.8L344 139.8L345.8 150L346 157L345 165.5L342.8 174.2L338.2 184L334.5 189.5L327.8 196.8L322 201.2L315.8 205L307.5 208.8L299.2 211L291.2 212L272.8 212.8L253.2 212.5L252.5 211.8L252.5 124.2L252 123.8L175.2 124L175.2 314.5L174 321L172.2 324L168.5 327.8L164.8 330.2L156.2 334L149.5 336L132.5 339L103.2 339.5L102.8 338.8L102.8 89.2L103.2 88.8L220 88.5L248.8 88.8L267.8 90L289.2 92.8L304 96.8L315.2 101.8Z"/></svg>
+        <div><b>DRT Creation</b><small>Bruxelles · Studio</small></div>
+      </div>
+      <div class="ref">Contrat n° <b>DRT-{{NO}}</b><br>Date <b>____ / ____ / 20____</b></div>
+    </div>
+    <h1>Contrat de <em>maintenance</em> &amp; hébergement</h1>
+    <p>Conditions de l'hébergement, de la surveillance, de la maintenance et du support mensuel assurés par DRT Creation pour le site ou l'application du client.</p>
+  </header>
+  <div class="sub"><span><b>01</b>Parties</span><span><b>02</b>Prestations</span><span><b>03</b>Mensualité</span><span><b>04</b>Pause auto</span><span><b>05</b>Délais</span><span><b>06</b>Annuel</span><span><b>07</b>Durée</span><span><b>08</b>Facturation</span><span><b>09–12</b>RGPD · Droit · Aides</span></div>
+
+  <div class="body">
+    <div>
+      <h2 data-n="01">Parties</h2>
+      <table>
+        <tr><th></th><th>Prestataire</th><th>Client</th></tr>
+        <tr><td class="k">Nom</td><td>DRT Creation — Matheus Duarte</td><td><span class="field l"></span></td></tr>
+        <tr><td class="k">Statut · n° BCE</td><td>Indépendant · BCE 1045.012.177</td><td><span class="field l"></span></td></tr>
+        <tr><td class="k">Adresse</td><td>Rue de la Filature 25, 1070 Anderlecht (Bruxelles)</td><td><span class="field l"></span></td></tr>
+        <tr><td class="k">Contact</td><td>contact@drtcreation.com</td><td><span class="field l"></span></td></tr>
+        <tr><td class="k">Site(s) / application</td><td colspan="2"><span class="field" style="min-width:140mm"></span></td></tr>
+      </table>
+    </div>
+
+    <div>
+      <h2 data-n="02">Objet et prestations incluses</h2>
+      <p>DRT Creation héberge, surveille, protège et fait évoluer le site ou l'application du client contre une mensualité fixe, sans frais cachés. La formule comprend :</p>
+      <ul>
+        <li><b>Hébergement</b> sur serveur européen, domaine technique, certificat HTTPS renouvelé automatiquement ;</li>
+        <li><b>Surveillance 24 h/24</b> depuis l'Europe et l'étranger : alerte immédiate et intervention en cas de panne ;</li>
+        <li><b>Mises à jour de sécurité</b> du système, des extensions et des dépendances, testées avant mise en ligne ;</li>
+        <li><b>Sauvegardes quotidiennes</b> conservées hors du serveur, restauration sur simple demande ;</li>
+        <li><b>Correction des bugs</b> et des pannes liés au fonctionnement normal du site ou de l'application ;</li>
+        <li><b>1 heure par mois</b> de modifications (textes, images, prix, horaires, menus, photos de produits) ;</li>
+        <li><b>Compatibilité</b> : vérification régulière sur mobile, tablette et navigateurs récents ;</li>
+        <li><b>Performance</b> : optimisation des images et du temps de chargement, vérification Google Search ;</li>
+        <li><b>Boîtes e-mail et domaine</b> : suivi des renouvellements, configuration DNS, aide en cas de blocage ;</li>
+        <li><b>Espace client en ligne</b> : visites anonymes, disponibilité, avis Google, chiffres clés, historique des paiements ;</li>
+        <li><b>Rapport mensuel automatique</b> par e-mail / WhatsApp : visites, disponibilité, commandes ou réservations ;</li>
+        <li><b>Support prioritaire</b> par WhatsApp et e-mail, en français ou en portugais, et conseils d'amélioration.</li>
+      </ul>
+      <p class="note">Non inclus : nouvelles fonctionnalités, refontes graphiques, rédaction de contenu, campagnes publicitaires, licences payantes de tiers — sur devis séparé, avec tarif préférentiel pour les clients sous contrat.</p>
+    </div>
+
+  </div>
+  <footer class="foot"><span><b>DRT Creation</b> · Contrat de maintenance</span><span>Page 1 / 4</span></footer>
+</section>
+
+<section class="page pg2">
+  <div class="body">
+    <div>
+      <h2 data-n="03">Mensualité et paiement</h2>
+      <table>
+        <tr><td class="k">Formule</td><td><span class="box"></span>Site &nbsp;&nbsp; <span class="box"></span>Boutique en ligne &nbsp;&nbsp; <span class="box"></span>Système / application</td></tr>
+        <tr><td class="k">Mensualité</td><td><span class="mono"><span class="field s"></span> € / mois</span> &nbsp;<span class="note">TVA non applicable — régime de la franchise, art. 56bis CTVA</span></td></tr>
+        <tr><td class="k">Création</td><td><span class="box"></span><b>Avec acompte</b> : <span class="mono"><span class="field s"></span> €</span>, réglés selon le devis &nbsp; <span class="box"></span><b>Sans apport</b> : incluse dans la mensualité, engagement <span class="box"></span>12 <span class="box"></span>24 mois</td></tr>
+        <tr><td class="k">Échéance</td><td>le <b>1<sup>er</sup></b> de chaque mois, payable d'avance</td></tr>
+        <tr><td class="k">Paiement</td><td>Virement avec la communication structurée indiquée sur l'espace client, ou carte via le lien de l'espace client</td></tr>
+        <tr><td class="k">IBAN</td><td class="mono">BE65 3632 8700 9296 <span class="note" style="font-family:'Instrument Sans';font-size:8.6pt">· titulaire : DRT Creation</span></td></tr>
+      </table>
+      <p style="margin-top:2mm">En formule <b>sans apport</b>, la mensualité comprend la maintenance et une part de création ; à la fin de l'engagement, elle passe au tarif de la maintenance seule de la formule choisie. La mensualité couvre le mois à venir. Le client reçoit un rappel automatique (e-mail et/ou WhatsApp) 3 jours avant l'échéance et le jour même. Chaque paiement est confirmé dans l'espace client, qui tient lieu d'historique.</p>
+    </div>
+
+    <div>
+      <h2 data-n="04">Retard de paiement : mise en pause automatique</h2>
+      <div class="steps">
+        <div class="step"><i>J − 3</i><b>Rappel</b><span>E-mail / WhatsApp automatique avant l'échéance.</span></div>
+        <div class="step"><i>J → J + 3</i><b>Délai de grâce</b><span>Site en ligne, rappel chaque jour.</span></div>
+        <div class="step on"><i>J + 4</i><b>Pause</b><span>Page d'attente neutre. Données, commandes et admin intacts.</span></div>
+        <div class="step"><i>Paiement</i><b>Retour en ligne</b><span>Automatique, sans frais, dans l'heure.</span></div>
+      </div>
+      <p>Aucune donnée n'est supprimée pendant la pause. Après 60 jours de pause sans paiement, le contrat est considéré comme résilié par le client ; une copie des données lui est remise sur demande dans les 30 jours suivants.</p>
+    </div>
+    <div>
+      <h2 data-n="05">Délais d'intervention</h2>
+      <table>
+        <tr><th>Situation</th><th>Prise en charge</th><th>Résolution visée</th></tr>
+        <tr><td>Site ou application hors ligne</td><td class="mono">2 h <span class="note" style="font-family:'Instrument Sans';font-size:8.3pt">(7 j/7, 8 h – 22 h)</span></td><td class="mono">24 h</td></tr>
+        <tr><td>Fonction essentielle en panne (commande, paiement, réservation)</td><td class="mono">4 h ouvrées</td><td class="mono">2 jours ouvrés</td></tr>
+        <tr><td>Bug mineur, petite modification</td><td class="mono">1 jour ouvré</td><td class="mono">5 jours ouvrés</td></tr>
+      </table>
+      <p class="note" style="margin-top:1.5mm">Demandes par WhatsApp ou e-mail. Les pannes dues à un tiers (hébergeur, fournisseur de paiement, extension externe) sont traitées avec la même priorité, sans garantie de délai sur la part qui ne dépend pas de DRT Creation.</p>
+    </div>
+
+  </div>
+  <footer class="foot"><span><b>DRT Creation</b> · Contrat de maintenance</span><span>Page 2 / 4</span></footer>
+</section>
+
+<section class="page pg2">
+  <div class="body">
+    <div>
+      <h2 data-n="06">Formule annuelle : payez 10 mois, recevez 12</h2>
+      <div class="hl">Le client peut régler l'année en une fois : il paie <b>10 mensualités</b> et bénéficie de <b>12 mois de service</b> — 2 mois offerts, soit une remise de 16,7 %. Le montant est fixé pour toute l'année. Le paiement annuel n'est pas remboursable en cas de résiliation anticipée par le client.</div>
+    </div>
+
+    <div>
+      <h2 data-n="07">Durée et renouvellement</h2>
+      <p>Le contrat est conclu pour une <b>durée ferme de 12 mois</b> (ou de la durée d'engagement choisie en formule sans apport, article 3) à compter de la date de début (article 8). En formule sans apport, une résiliation anticipée rend exigible le solde de la part création restant à courir. Pendant cette période, les mensualités restantes sont dues en cas de résiliation par le client ; DRT Creation ne peut y mettre fin que pour manquement grave du client non corrigé dans les 15 jours.</p>
+      <p>Au plus tard <b>60 jours avant l'échéance</b>, DRT Creation adresse au client une proposition de renouvellement. Le client choisit librement :</p>
+      <div class="steps" style="grid-template-columns:repeat(3,1fr)">
+        <div class="step"><i>Année 1</i><b>Contrat initial</b><span>Toutes les prestations de l'article 2, 1 h de modifications par mois, tarif indiqué à l'article 3.</span></div>
+        <div class="step on"><i>Option A · renouveler</i><b>12 mois, − 10 % et avantages</b><span>Mensualité réduite de 10 %, 2 h de modifications par mois, 1 rafraîchissement par an offert (photos, textes, mise en page d'une page), − 10 % sur tout nouveau projet, audit annuel de performance.</span></div>
+        <div class="step"><i>Option B · ne pas renouveler</i><b>Fin du contrat</b><span>Remise d'une copie complète du site et des données. Hébergement maintenu 30 jours après l'échéance pour la migration ; aide à la migration sur devis.</span></div>
+      </div>
+      <p>Sans réponse du client à l'échéance, le service est prolongé de mois en mois au tarif en cours, résiliable par chaque partie avec 30 jours de préavis, jusqu'à la signature d'un renouvellement ou la fin du service. Les avantages de l'option A se cumulent à chaque renouvellement de 12 mois.</p>
+    </div>
+
+    <div>
+      <h2 data-n="08">Début, facturation et modifications</h2>
+      <p>Date de début du service : <span class="field s" style="min-width:28mm"></span> (à défaut, la date de signature). Le premier mois est facturé au prorata des jours restants ; les mensualités suivantes courent du 1<sup>er</sup> au dernier jour du mois.</p>
+      <p>La facture est émise chaque mois par e-mail ou WhatsApp, avec la mention « TVA non applicable, art. 56bis CTVA ». L'heure mensuelle de modifications ne se cumule pas d'un mois à l'autre ; les demandes dépassant ce volume font l'objet d'un devis ou sont facturées 45 € HTVA de l'heure, après accord du client.</p>
+    </div>
+    <div>
+      <h2 data-n="09">Données, confidentialité et RGPD</h2>
+      <p>Le client reste propriétaire de son contenu, de ses données et de son nom de domaine. DRT Creation n'y accède que pour les besoins de la maintenance, ne les communique à personne et garde confidentielle toute information relative à l'activité du client.</p>
+      <p><b>Sous-traitance (art. 28 RGPD).</b> Pour les données personnelles traitées par le site ou l'application (clients, commandes, réservations), le client est responsable du traitement et DRT Creation sous-traitant. DRT Creation ne traite ces données que sur instruction du client et pour l'exécution du présent contrat, applique des mesures de sécurité appropriées (HTTPS, accès restreints, sauvegardes chiffrées, mises à jour), informe le client sans délai de toute violation de données, et supprime ou restitue les données à la fin du contrat. Sous-traitants ultérieurs autorisés : les hébergeurs et services techniques situés dans l'Union européenne ou offrant des garanties équivalentes, listés sur l'espace client ; tout changement est notifié au client.</p>
+      <p>L'espace client affiche une mesure d'audience <b>anonyme</b> : aucun cookie, aucune donnée personnelle des visiteurs n'est conservée. Le client s'engage à le mentionner dans sa politique de confidentialité (phrase fournie par DRT Creation). Les données de la boutique transmises à l'espace client se limitent à des totaux journaliers.</p>
+    </div>
+
+  </div>
+  <footer class="foot"><span><b>DRT Creation</b> · Contrat de maintenance</span><span>Page 3 / 4</span></footer>
+</section>
+
+<section class="page pg2">
+  <div class="body">
+    <div>
+      <h2 data-n="10">Propriété intellectuelle</h2>
+      <p>Le site ou l'application, y compris son code source, sa configuration et son contenu (textes, images, marque, catalogue), <b>appartient au client</b> dès paiement complet de son développement (en formule sans apport : au paiement de la dernière mensualité de la période d'engagement). DRT Creation conserve le droit d'utiliser ses outils, bibliothèques et composants génériques dans d'autres projets, et peut citer le projet comme référence. À la fin du contrat, le client reçoit le code source et l'intégralité de ses données dans un format exploitable ; seuls l'hébergement, la surveillance et l'espace client fournis par DRT Creation cessent.</p>
+    </div>
+
+    <div>
+      <h2 data-n="11">Responsabilité, force majeure et droit applicable</h2>
+      <p>DRT Creation met tout en œuvre pour assurer la continuité du service, sans pouvoir garantir une disponibilité absolue. Sa responsabilité est limitée au montant des mensualités des 3 derniers mois. Aucune partie n'est responsable d'un manquement dû à un cas de force majeure (panne majeure d'un hébergeur ou d'un réseau, cyberattaque d'ampleur, décision des autorités). Le contrat est soumis au droit belge ; en cas de litige non résolu à l'amiable, les tribunaux de Bruxelles sont compétents. Il peut être signé électroniquement, chaque signature électronique ayant la même valeur qu'une signature manuscrite.</p>
+    </div>
+
+    <div>
+      <h2 data-n="12">Aides et avantages fiscaux (à titre d'information)</h2>
+      <div class="cols" style="gap:4mm">
+        <div class="hl" style="background:#f3f5fb"><b>Mensualité 100 % déductible.</b> Hébergement, mises à jour, sauvegardes et surveillance sont des charges professionnelles courantes, déduites intégralement l'année du paiement sur simple facture.</div>
+        <div class="hl" style="background:#f3f5fb"><b>Déduction pour investissement + 20 %.</b> Un site ou une application neuf est un investissement amorti sur 3 ans ; les PME et indépendants déduisent en plus 20 % du montant (formulaire 275U, investissements numériques).</div>
+      </div>
+      <div class="hl" style="margin-top:2mm"><b>Prime Digitalisation de la Région bruxelloise : 25 % à 70 % des frais HTVA, plafond 10 000 €/an.</b> Création ou refonte de site, e-commerce, digitalisation des processus, sécurité informatique. +25 % pour une entreprise de moins de 4 ans, +30 % si elle est exemplaire sur le plan social ou environnemental. Conditions : PME avec siège d'exploitation à Bruxelles, demande déposée sur MonBEE <b>avant</b> le début du projet, prestataire éligible. DRT Creation prépare le dossier avec le client sans frais.</div>
+      <p class="note" style="margin-top:2mm">Montants et conditions fixés par les autorités (Bruxelles Économie et Emploi, SPF Finances) et susceptibles d'évoluer ; ils ne constituent ni une garantie ni un conseil fiscal. Le client vérifie son éligibilité avec son comptable.</p>
+    </div>
+
+    <div class="sig">
+      <div>
+        <h3>Pour DRT Creation</h3>
+        <div class="ln"><span>Nom</span><span>Matheus Duarte</span></div>
+        <div class="ln"><span>Date</span><span class="mono">____ / ____ / 20____</span></div>
+        <div class="pad" style="position:relative"><img class="stamp" src="/brand/carimbo.png" alt=""></div>
+      </div>
+      <div>
+        <h3>Pour le client</h3>
+        <div class="ln"><span>Nom</span><span class="field"></span></div>
+        <div class="ln"><span>Date</span><span class="mono">____ / ____ / 20____</span></div>
+        <div class="pad"></div>
+      </div>
+    </div>
+    <p class="note" style="text-align:center;margin:1.5mm 0 2mm">Fait en deux exemplaires. Signature précédée de la mention « lu et approuvé ».</p>
+  </div>
+  <footer class="foot"><span><b>DRT Creation</b> · Contrat de maintenance</span><span>Page 4 / 4</span></footer>
+</section></body>
+</html>

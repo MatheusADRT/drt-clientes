@@ -21,6 +21,38 @@ const ESP = require('./lib/espace');
 const BF = require('./lib/briefing');
 const PR = require('./lib/prospects');
 const PP = require('./lib/proposal');
+const CT = require('./lib/contract');
+// próximo número de contrato (DRT-103 é o modelo em branco)
+// ---- indicações ----
+function refCode(c) {
+  if (!c.refCode) { const A = 'abcdefghjkmnpqrstuvwxyz23456789'; let x; do { x = Array.from(crypto.randomBytes(6), (b) => A[b % A.length]).join(''); } while (db().clients.some((k) => k.refCode === x)); c.refCode = x; store.save(); }
+  return c.refCode;
+}
+const byRef = (code) => code && /^[a-z0-9]{6}$/.test(code) ? db().clients.find((c) => c.refCode === code && !c.archived) : null;
+function referralCtx(c) {
+  const list = (db().briefings || []).filter((b) => b.referrerId === c.id).map((b) => {
+    const pq = (db().proposals || []).find((x) => x.briefingId === b.id);
+    return { company: b.answers.company, at: b.at, status: pq && pq.contract && pq.contract.signedAt ? 'signed' : pq && pq.status === 'accepted' ? 'accepted' : pq && pq.status !== 'draft' ? 'proposal' : 'briefing' };
+  });
+  return { url: PUBLIC_URL + '/r/' + refCode(c), list, months: (c.referrals || []).length };
+}
+// contrato de um indicado assinado → 1 mês grátis para quem indicou
+function rewardReferral(pp) {
+  if (!pp.referrerId || pp.referralRewarded) return '';
+  const c = byId(pp.referrerId); if (!c || c.archived) return '';
+  const per = B.applyPayment(c, 1, c.dueDay); c.paidUntil = per.to;
+  (c.referrals = c.referrals || []).push({ company: pp.client.company, at: new Date().toISOString(), proposalId: pp.id, from: per.from, to: per.to });
+  pp.referralRewarded = true;
+  store.log('client', c.id, 'Indicação: ' + pp.client.company + ' assinou → 1 mês grátis (pago até ' + fdate(c.paidUntil, 'pt') + ')');
+  if (c.email) {
+    const fr = c.lang !== 'pt'; const first = String(c.contactName || '').split(/\s+/)[0];
+    const txt = fr ? `Bonjour ${first}, merci ! ${pp.client.company}, que vous avez recommandé, vient de signer avec DRT Creation. Comme promis, votre prochain mois est offert : votre service est réglé jusqu’au ${fdate(c.paidUntil, 'fr', 1)}.`
+      : `Olá ${first}, obrigado! A ${pp.client.company}, que você indicou, acabou de fechar com a DRT Creation. Como prometido, o seu próximo mês é grátis: o seu serviço está pago até ${fdate(c.paidUntil, 'pt', 1)}.`;
+    NT.email(c.email, fr ? 'Merci ! 1 mois offert · DRT Creation' : 'Obrigado! 1 mês grátis · DRT Creation', '<div style="font:15px/1.6 Arial,sans-serif;color:#07141a;max-width:560px"><p>' + esc(txt) + '</p><p>Matheus D.<br><b>DRT Creation</b></p></div>', txt).catch(() => {});
+  }
+  return c.name;
+}
+function nextContractNo() { const d = db(); return Math.max(103, ...d.clients.map((c) => c.no || 0), ...(d.proposals || []).map((x) => x.contractNo || 0)) + 1; }
 const BC = require('./lib/brandcard');
 const PAUSE_TPL = fs.readFileSync(path.join(__dirname, 'integrations', 'pause-page.html'), 'utf8');
 // script para sites estáticos: contador de visitas + pausa do lado do visitante quando a mensalidade está suspensa
@@ -93,7 +125,7 @@ const LT = {
 };
 function espCtx(c, flash) {
   const set = S(); const wa = set.whatsapp ? set.whatsapp.replace(/\D/g, '') : '';
-  return { status: st(c), ogm, flash: flash || '', hasPdf: fs.existsSync(path.join(__dirname, 'contracts', 'DRT-' + c.no + '.pdf')), waUrl: wa ? (txt) => 'https://wa.me/' + wa + '?text=' + encodeURIComponent(txt + ' (' + c.name + ', DRT-' + c.no + ')') : null };
+  return { status: st(c), ogm, flash: flash || '', hasPdf: fs.existsSync(path.join(__dirname, 'contracts', 'DRT-' + c.no + '.pdf')), contractUrl: (() => { const pq = c.proposalId && (db().proposals || []).find((x) => x.id === c.proposalId); return pq ? '/p/' + pq.token + '/contrat' : ''; })(), referral: referralCtx(c), waUrl: wa ? (txt) => 'https://wa.me/' + wa + '?text=' + encodeURIComponent(txt + ' (' + c.name + ', DRT-' + c.no + ')') : null };
 }
 function clientLoginPage(lang, err, idv) {
   const t = LT[lang] || LT.fr; const set = S();
@@ -583,35 +615,58 @@ const server = http.createServer(async (req, res) => {
     }
 
     // ----- proposta (cliente) -----
-    if ((mm = p.match(/^\/p\/([A-Za-z0-9_-]{16,64})(\/accept)?$/))) {
+    if ((mm = p.match(/^\/p\/([A-Za-z0-9_-]{16,64})(\/accept|\/contrat|\/sign)?$/))) {
       const pp = (db().proposals || []).find((x) => x.token === mm[1]);
       if (!pp || pp.status === 'draft' && !isAdmin(req)) return html(res, 404, page({ title: 'DRT Creation', body: '<h1>Proposition introuvable</h1><p class="sub">Ce lien n’existe plus. Contactez DRT Creation.</p>', lang: 'fr' }));
       const wa = S().whatsapp ? 'https://wa.me/' + S().whatsapp.replace(/\D/g, '') + '?text=' + encodeURIComponent((pp.lang === 'pt' ? 'Oi! Sobre a proposta ' : 'Bonjour ! À propos de la proposition ') + pp.no + ' (' + pp.client.company + ')') : '';
-      if (mm[2] && m === 'POST') {
+      if (mm[2] === '/contrat' && (m === 'GET' || m === 'HEAD')) {
+        if (pp.status !== 'accepted' && !isAdmin(req)) return redirect(res, '/p/' + pp.token);
+        if (!pp.contractNo) { pp.contractNo = nextContractNo(); store.save(); }
+        return html(res, 200, CT.page(pp, { wa, preview: isAdmin(req) && !(pp.contract && pp.contract.signedAt) && pp.status !== 'accepted' }), { 'X-Robots-Tag': 'noindex', 'X-Frame-Options': 'DENY' });
+      }
+      if (mm[2] === '/sign' && m === 'POST') {
+        if (!sameOrigin(req)) return html(res, 403, 'Origine invalide');
+        const f = form(await readBody(req, 4000));
+        if (pp.status === 'accepted' && !(pp.contract && pp.contract.signedAt) && f.ok === '1' && String(f.name || '').trim().length >= 3) {
+          if (!pp.contractNo) pp.contractNo = nextContractNo();
+          pp.contract = { signedBy: String(f.name).trim().slice(0, 80), signedAt: new Date().toISOString(), ip: ip(req), ua: String(req.headers['user-agent'] || '').slice(0, 200), ref: crypto.randomBytes(6).toString('hex').toUpperCase() };
+          const pr = (db().prospects || []).find((x) => x.id === pp.prospectId); if (pr) PR.log(pr, 'won', 'Contrato DRT-' + pp.contractNo + ' assinado');
+          store.log('contract', null, 'Contrato DRT-' + pp.contractNo + ' assinado por ' + pp.contract.signedBy + ' (' + pp.client.company + ')');
+          const rw = rewardReferral(pp);
+          store.save();
+          const link = PUBLIC_URL + '/admin/proposals/' + pp.id;
+          NT.toAdmin({ subject: '✍️ Contrato assinado · ' + pp.client.company + ' (DRT-' + pp.contractNo + ')', text: pp.client.company + ' assinou o contrato DRT-' + pp.contractNo + '. ' + link, html: '<p><b>' + esc(pp.client.company) + '</b> assinou o contrato <b>DRT-' + pp.contractNo + '</b> (' + esc(pp.contract.signedBy) + ').</p>' + (rw ? '<p>Indicação: ' + esc(rw) + ' ganhou 1 mês grátis (já lançado).</p>' : '') + '<p>Próximo passo: cadastrar o cliente na central (botão na proposta) e combinar a data de início.</p><p><a href="' + link + '">Abrir no painel</a></p>' }).catch(() => {});
+        }
+        return redirect(res, '/p/' + pp.token + '/contrat');
+      }
+      if (mm[2] === '/accept' && m === 'POST') {
         if (!sameOrigin(req)) return html(res, 403, 'Origine invalide');
         const f = form(await readBody(req, 4000));
         const expired = pp.validUntil && pp.validUntil < B.today();
         if (pp.status !== 'accepted' && !expired && f.ok === '1' && String(f.name || '').trim() && (pp.financing !== 'both' || ['upfront', 'monthly'].includes(f.opt))) {
-          pp.status = 'accepted'; pp.acceptedAt = new Date().toISOString(); pp.acceptedBy = String(f.name).trim().slice(0, 80); pp.acceptedIp = ip(req); pp.acceptedOption = pp.financing === 'both' ? f.opt : (pp.financing === 'monthly' ? 'monthly' : 'upfront');
+          pp.status = 'accepted'; pp.acceptedAt = new Date().toISOString(); pp.acceptedBy = String(f.name).trim().slice(0, 80); pp.acceptedIp = ip(req); pp.acceptedOption = pp.financing === 'both' ? f.opt : (pp.financing === 'monthly' ? 'monthly' : 'upfront'); pp.contractNo = pp.contractNo || nextContractNo();
           const pr = (db().prospects || []).find((x) => x.id === pp.prospectId); if (pr) { pr.status = 'won'; pr.nextAt = ''; PR.log(pr, 'won', 'Aceitou a proposta ' + pp.no); }
           store.log('proposal', null, 'Proposta ' + pp.no + ' aceita por ' + pp.acceptedBy + ' (' + pp.client.company + ')'); store.save();
           const tt = PP.totals(pp); const link = PUBLIC_URL + '/admin/proposals/' + pp.id;
           NT.toAdmin({ subject: '🎉 Proposta aceita · ' + pp.client.company, text: 'A ' + pp.client.company + ' aceitou a proposta ' + pp.no + ' (' + pp.acceptedBy + '): ' + (pp.acceptedOption === 'monthly' ? 'SEM ENTRADA, ' + tt.sub + ' €/mês por ' + tt.months + ' meses' : 'com entrada, criação ' + tt.setup + ' € + ' + tt.monthly + ' €/mês') + '. ' + link, html: '<p><b>' + esc(pp.client.company) + '</b> aceitou a proposta <b>' + esc(pp.no) + '</b>.</p><p>Assinado por: ' + esc(pp.acceptedBy) + '<br>Forma escolhida: <b>' + (pp.acceptedOption === 'monthly' ? 'sem entrada · ' + tt.sub + ' €/mês × ' + tt.months + ' meses (total ' + tt.subTotal + ' €), depois ' + tt.monthly + ' €/mês' : 'com entrada · criação ' + tt.setup + ' € + ' + tt.monthly + ' €/mês') + '</b></p><p>Próximo passo: preparar o contrato e cadastrar o cliente.</p><p><a href="' + link + '">Abrir no painel</a></p>' }).catch(() => {});
         }
-        return redirect(res, '/p/' + pp.token + '?ok=1');
+        return redirect(res, pp.status === 'accepted' ? '/p/' + pp.token + '/contrat' : '/p/' + pp.token);
       }
+      if (mm[2]) return html(res, 405, 'Méthode');
       if (m !== 'GET' && m !== 'HEAD') return html(res, 405, 'Méthode');
       const admin = isAdmin(req);
       if (!admin && m === 'GET') { pp.views = (pp.views || 0) + 1; pp.lastViewAt = new Date().toISOString(); if (pp.status === 'sent') pp.status = 'viewed'; store.save(); }
       return html(res, 200, PP.render(pp, { wa, preview: admin }), { 'X-Robots-Tag': 'noindex' });
     }
 
+    if ((mm = p.match(/^\/r\/([a-z0-9]{6})$/)) && (m === 'GET' || m === 'HEAD')) { const rc = byRef(mm[1]); return redirect(res, '/briefing' + (rc ? '?ref=' + rc.refCode + '&lang=' + (rc.lang === 'pt' ? 'pt' : 'fr') : '')); }
     // ----- briefing público -----
     if (p === '/briefing' && (m === 'GET' || m === 'HEAD')) {
       const ql = u.searchParams.get('lang'); const al = String(req.headers['accept-language'] || '').slice(0, 2).toLowerCase();
       const lang = BF.LANGS.includes(ql) ? ql : BF.LANGS.includes(al) ? al : 'fr';
       const wa = S().whatsapp ? 'https://wa.me/' + S().whatsapp.replace(/\D/g, '') : '';
-      return html(res, 200, BF.formPage(lang, wa), { 'Cache-Control': 'no-cache' });
+      const rc = byRef(u.searchParams.get('ref'));
+      return html(res, 200, BF.formPage(lang, wa, rc ? { ref: rc.refCode, name: rc.name } : null), { 'Cache-Control': 'no-cache' });
     }
     if (p === '/briefing' && m === 'POST') {
       if (!sameOrigin(req)) return json(res, 403, { error: 'origin' });
@@ -627,6 +682,7 @@ const server = http.createServer(async (req, res) => {
       const id = store.id(8); const lang = BF.LANGS.includes(b.lang) ? b.lang : 'fr';
       const files = BF.saveFiles(path.join(store.DIR, 'briefings', id), b.files);
       const rec = { id, at: new Date().toISOString(), lang, status: 'new', answers, files, note: '' };
+      const rc = byRef(String(b.ref || '')); if (rc) { rec.referrerId = rc.id; rec.referrerName = rc.name; }
       d.briefings.unshift(rec); store.log('briefing', null, 'Novo briefing: ' + answers.company + ' (' + answers.contact + ')');
       const pm = PR.matchBriefing(d.prospects || [], rec); if (pm) { pm.status = 'briefing'; pm.briefingId = id; pm.nextAt = PR.addDays(PR.today(), 2); PR.log(pm, 'briefing', 'Briefing recebido'); rec.prospectId = pm.id; }
       store.save();
@@ -686,7 +742,7 @@ const server = http.createServer(async (req, res) => {
       const d = db(); if (!Array.isArray(d.proposals)) d.proposals = [];
       const yr = B.today().slice(0, 4); d.proposalSeq = d.proposalSeq || {}; d.proposalSeq[yr] = (d.proposalSeq[yr] || 0) + 1;
       const pp = { id: store.id(6), token: store.id(18), at: new Date().toISOString(), ...PP.suggest(b, S(), 'P' + yr + '-' + String(d.proposalSeq[yr]).padStart(3, '0')) };
-      pp.prospectId = b.prospectId || null; d.proposals.unshift(pp); b.proposalId = pp.id; if (b.status === 'new') b.status = 'contacted';
+      pp.prospectId = b.prospectId || null; pp.referrerId = b.referrerId || null; d.proposals.unshift(pp); b.proposalId = pp.id; if (b.status === 'new') b.status = 'contacted';
       store.log('proposal', null, 'Proposta ' + pp.no + ' criada para ' + pp.client.company); store.save();
       return redirect(res, '/admin/proposals/' + pp.id + '?ok=' + encodeURIComponent('Proposta montada a partir do briefing. Confira os itens e os preços antes de enviar.'));
     }
@@ -696,7 +752,7 @@ const server = http.createServer(async (req, res) => {
 ${list.length ? `<div class="tbl"><table><tr><th>Nº</th><th>Empresa</th><th>Criação</th><th>Mensal</th><th>Status</th><th>Vistas</th><th>Data</th></tr>${list.map((x) => { const tt = PP.totals(x); const S2 = PP.STATUS[x.status] || PP.STATUS.draft; return `<tr><td class="mono"><a href="/admin/proposals/${x.id}">${esc(x.no)}</a></td><td><a href="/admin/proposals/${x.id}"><b>${esc(x.client.company)}</b></a></td><td>${PP.eur(tt.setup, 'fr')}</td><td>${tt.monthly ? PP.eur(tt.monthly, 'fr') : '—'}</td><td><span class="${S2[1]}">${S2[0]}</span></td><td>${x.views || 0}</td><td class="mono muted">${esc((x.sentAt || x.at).slice(0, 10))}</td></tr>`; }).join('')}</table></div>` : '<div class="panel"><p style="margin:0">Nenhuma proposta ainda.</p></div>'}`;
       return html(res, 200, page({ title: 'Propostas · DRT Creation', nav: NAV('prop'), body }));
     }
-    if ((mm = p.match(/^\/admin\/proposals\/([A-Za-z0-9_-]+)(\/send|\/delete|\/status)?$/))) {
+    if ((mm = p.match(/^\/admin\/proposals\/([A-Za-z0-9_-]+)(\/send|\/delete|\/status|\/client|\/sendcontract)?$/))) {
       const list = db().proposals || []; const pp = list.find((x) => x.id === mm[1]);
       if (!pp) return html(res, 404, page({ title: 'Proposta', nav: NAV('prop'), body: '<h1>Proposta não encontrada</h1>' }));
       const url = PUBLIC_URL + '/p/' + pp.token;
@@ -713,6 +769,25 @@ ${list.length ? `<div class="tbl"><table><tr><th>Nº</th><th>Empresa</th><th>Cri
         const n = PR.waNumber(pp.client.phone);
         return redirect(res, 'https://wa.me/' + n + '?text=' + encodeURIComponent(txt));
       }
+      if (mm[2] === '/client' && m === 'POST') {
+        if (pp.clientId && byId(pp.clientId)) return redirect(res, '/admin/c/' + pp.clientId);
+        if (pp.status !== 'accepted') return redirect(res, '/admin/proposals/' + pp.id + '?ok=' + encodeURIComponent('A proposta ainda não foi aceita.'));
+        const tt = PP.totals(pp); const opt = CT.option(pp); const no = pp.contractNo || nextContractNo(); pp.contractNo = no;
+        if (db().clients.some((c) => c.no === no)) return html(res, 409, 'Já existe um cliente DRT-' + no);
+        const b = (db().briefings || []).find((x) => x.id === pp.briefingId);
+        const site = b && b.answers.currentSite ? (/^https?:/.test(b.answers.currentSite) ? b.answers.currentSite : 'https://' + b.answers.currentSite) : '';
+        const c = { id: store.id(6), no, token: store.id(18), key: slug(pp.client.company) + '-' + store.id(5), since: B.today(), override: 'paused', paidUntil: B.today(), dueDay: 1,
+          name: pp.client.company, plan: pp.plan, amount: Math.round((opt === 'monthly' ? tt.sub : tt.monthly) * 100), contactName: pp.client.contact, phone: pp.client.phone, email: pp.client.email, lang: pp.lang === 'pt' ? 'pt' : 'fr', sites: site ? [site] : [], color: '#1d44d6',
+          contractStart: pp.startDate || '', proposalId: pp.id, referredBy: pp.referrerId || null,
+          notes: 'Proposta ' + pp.no + ' · contrato DRT-' + no + (pp.contract && pp.contract.signedAt ? ' assinado em ' + pp.contract.signedAt.slice(0, 10) : ' (ainda não assinado)') + (opt === 'monthly' ? ' · SEM ENTRADA: ' + tt.sub + ' €/mês por ' + tt.months + ' meses, depois ' + tt.monthly + ' €/mês (ajustar a mensalidade no fim do prazo)' : ' · com entrada: criação ' + tt.setup + ' € (' + (pp.payTerms || '') + ')') + (pp.client.vat ? ' · TVA: ' + pp.client.vat : '') + (pp.client.address ? ' · ' + pp.client.address : '') };
+        db().clients.push(c); pp.clientId = c.id; store.log('client', c.id, 'Cliente cadastrado a partir da proposta ' + pp.no); store.save();
+        return redirect(res, '/admin/c/' + c.id + '?ok=' + encodeURIComponent('Cliente DRT-' + no + ' cadastrado (cobrança em pausa). Quando o site for ao ar: ponha a data de início, marque "Ativar a cobrança" e gere a senha da área do cliente.'));
+      }
+      if (mm[2] === '/sendcontract' && m === 'POST') {
+        const curl = PUBLIC_URL + '/p/' + pp.token + '/contrat'; const first = String(pp.client.contact || '').split(/\s+/)[0];
+        const txt = pp.lang === 'pt' ? `Oi ${first}! Aqui está o contrato DRT-${pp.contractNo} para assinar online (leva 1 minuto): ${curl}` : `Bonjour ${first} ! Voici le contrat DRT-${pp.contractNo} à signer en ligne (1 minute) : ${curl}`;
+        return redirect(res, 'https://wa.me/' + PR.waNumber(pp.client.phone) + '?text=' + encodeURIComponent(txt));
+      }
       if (mm[2] === '/status' && m === 'POST') { const f = form(await readBody(req, 2000)); if (PP.STATUS[f.status]) pp.status = f.status; store.save(); return redirect(res, '/admin/proposals/' + pp.id + '?ok=' + encodeURIComponent('Status atualizado.')); }
       if (mm[2] === '/delete' && m === 'POST') { db().proposals = list.filter((x) => x !== pp); store.save(); return redirect(res, '/admin/proposals?ok=' + encodeURIComponent('Proposta ' + pp.no + ' apagada.')); }
       if (m === 'POST') { PP.fromForm((await readBody(req, 100000)).toString('utf8'), pp); store.save(); return redirect(res, '/admin/proposals/' + pp.id + '?ok=' + encodeURIComponent('Salvo.')); }
@@ -725,6 +800,9 @@ ${pp.client.email ? `<form method="post" action="/admin/proposals/${pp.id}/send"
 ${pp.briefingId ? `<a class="btn" href="/admin/briefings/${pp.briefingId}">Ver briefing</a>` : ''}</div>
 <div class="copy" style="max-width:640px;margin:0 0 8px"><input readonly value="${esc(url)}" onclick="this.select()"><button type="button" class="btn sm" onclick="navigator.clipboard.writeText(${esc(JSON.stringify(url))});this.textContent='Copiado ✓'">Copiar link</button></div>
 <p class="muted" style="font-size:13px;margin:0 0 6px">O cliente abre o link, pode imprimir em PDF e aceitar online. Você recebe um e-mail quando ele aceitar. Enquanto estiver como rascunho, só você consegue abrir o link.</p>
+${pp.status === 'accepted' ? `<h2>Contrato DRT-${pp.contractNo || '—'}</h2><div class="panel"><p style="margin:0 0 12px">${pp.contract && pp.contract.signedAt ? `<span class="s-ok">✓ Assinado por <b>${esc(pp.contract.signedBy)}</b> em ${esc(new Date(pp.contract.signedAt).toLocaleString('pt-BR', { timeZone: 'Europe/Brussels' }))}</span> · ref. ${esc(pp.contract.ref)} · IP ${esc(pp.contract.ip)}` : '<span class="s-soon">Aguardando a assinatura do cliente.</span> Ele vê o contrato logo depois de aceitar; você também pode mandar o link.'}${pp.acceptedOption ? ' · forma: <b>' + (pp.acceptedOption === 'monthly' ? 'sem entrada' : 'com entrada') + '</b>' : ''}</p>
+<div class="row"><a class="btn pri" href="/p/${pp.token}/contrat" target="_blank" rel="noopener">Ver contrato</a>${!(pp.contract && pp.contract.signedAt) && pp.client.phone ? `<form method="post" action="/admin/proposals/${pp.id}/sendcontract" target="_blank" style="margin:0"><button class="btn" style="background:#1f7a4d;border-color:#1f7a4d;color:#fff">Mandar contrato por WhatsApp</button></form>` : ''}
+${pp.clientId && byId(pp.clientId) ? `<a class="btn" href="/admin/c/${pp.clientId}">Abrir cliente DRT-${byId(pp.clientId).no}</a>` : `<form method="post" action="/admin/proposals/${pp.id}/client" style="margin:0"><button class="btn">Cadastrar cliente na central</button></form>`}</div></div>` : ''}
 <h2>Editar</h2>${PP.editForm(pp)}
 <form method="post" action="/admin/proposals/${pp.id}/status" class="row" style="margin:26px 0 0"><select name="status" style="font:14px var(--body);padding:9px;background:var(--bg);color:var(--text);border:1px solid var(--line-2)">${Object.entries(PP.STATUS).map(([k, v]) => `<option value="${k}"${pp.status === k ? ' selected' : ''}>${v[0]}</option>`).join('')}</select><button class="btn sm">Mudar status</button></form>
 <form method="post" action="/admin/proposals/${pp.id}/delete" style="margin:30px 0 0" onsubmit="return confirm('Apagar a proposta ${esc(pp.no)}?')"><button class="btn danger sm">Apagar proposta</button></form>`;
@@ -824,7 +902,7 @@ ${list.length ? `<div class="tbl"><table><tr><th>Empresa</th><th>Contato</th><th
       if (m !== 'GET') return html(res, 405, 'Método');
       const a = b.answers; const phone = String(a.phone || '').replace(/\D/g, '');
       const body = `${flash ? `<div class="flash">${esc(flash)}</div>` : ''}<p style="margin:22px 0 0"><a class="mono muted" href="/admin/briefings">← Briefings</a></p>
-<h1>${esc(a.company)}</h1><p class="sub">${esc(a.contact)} · recebido em ${fdate(b.at.slice(0, 10), 'pt', 1)} às ${esc(new Date(b.at).toLocaleTimeString('pt-BR', { timeZone: 'Europe/Brussels', hour: '2-digit', minute: '2-digit' }))} · formulário em ${esc(b.lang.toUpperCase())}</p>
+<h1>${esc(a.company)}</h1>${b.referrerName ? `<p class="flash" style="margin:0 0 10px">Indicado por <b>${esc(b.referrerName)}</b>: quando o contrato for assinado, ele ganha 1 mês grátis automaticamente.</p>` : ''}<p class="sub">${esc(a.contact)} · recebido em ${fdate(b.at.slice(0, 10), 'pt', 1)} às ${esc(new Date(b.at).toLocaleTimeString('pt-BR', { timeZone: 'Europe/Brussels', hour: '2-digit', minute: '2-digit' }))} · formulário em ${esc(b.lang.toUpperCase())}</p>
 <div class="row" style="margin:0 0 18px">${phone ? `<a class="btn pri" target="_blank" rel="noopener" href="https://wa.me/${phone}">WhatsApp ${esc(a.phone)}</a>` : ''}<a class="btn" href="mailto:${esc(a.email)}">${esc(a.email)}</a>${b.proposalId && (db().proposals || []).some((x) => x.id === b.proposalId) ? `<a class="btn pri" href="/admin/proposals/${b.proposalId}">Abrir proposta</a>` : `<form method="post" action="/admin/briefings/${b.id}/proposal" style="margin:0"><button class="btn pri">Criar proposta</button></form>`}<a class="btn" href="/admin/new?from=${b.id}">Cadastrar como cliente</a></div>
 <form class="f panel" method="post" action="/admin/briefings/${b.id}/status" style="max-width:620px"><div class="two"><label>Status<select name="status">${Object.entries(BF.STATUSES).map(([k, v]) => `<option value="${k}"${b.status === k ? ' selected' : ''}>${v}</option>`).join('')}</select></label></div>
 <label>Notas internas<textarea name="note" rows="3">${esc(b.note || '')}</textarea></label><div class="row"><button class="btn pri">Salvar</button></div></form>
@@ -839,7 +917,7 @@ ${BF.detailHtml(b)}
     if (p === '/admin/clients' && m === 'POST') {
       const f = form(await readBody(req));
       const firstDue = /^\d{4}-\d{2}-\d{2}$/.test(f.firstDue || '') ? f.firstDue : B.today();
-      const no = db().clients.reduce((x, c) => Math.max(x, c.no || 0), 0) + 1;
+      const no = nextContractNo(); // pula o 103 (modelo) e os números já reservados por propostas
       const c = cleanClient(f, { id: store.id(6), no, token: store.id(18), key: slug(f.name) + '-' + store.id(5), since: B.today(), override: 'auto', paidUntil: B.initialPaidUntil(firstDue) });
       if (!c.name) return html(res, 400, 'Nome obrigatório');
       db().clients.push(c); store.log('client', c.id, 'Cliente cadastrado'); store.save();
