@@ -534,6 +534,7 @@ const server = http.createServer(async (req, res) => {
       }
       return html(res, 404, 'Page introuvable');
     }
+    if ((mm = p.match(/^\/brand\/([a-z0-9-]+\.png)$/)) && fs.existsSync(path.join(__dirname, 'public', 'brand', mm[1]))) { res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' }); return fs.createReadStream(path.join(__dirname, 'public', 'brand', mm[1])).pipe(res); }
     if ((mm = p.match(/^\/fonts\/(archivo|instrument-sans|jetbrains-mono)\.woff2$/))) { res.writeHead(200, { 'Content-Type': 'font/woff2', 'Cache-Control': 'public, max-age=31536000, immutable', 'Access-Control-Allow-Origin': '*' }); return fs.createReadStream(path.join(__dirname, 'public', 'fonts', mm[1] + '.woff2')).pipe(res); }
     // ----- espace client -----
     if (p === '/login' || p === '/espace' || p === '/logout') {
