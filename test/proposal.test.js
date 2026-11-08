@@ -22,7 +22,8 @@ test('proposta: sugestão a partir do briefing', () => {
   assert.equal(p.items.find((i) => i.k === 'page').qty, 2); assert.equal(p.items.find((i) => i.k === 'lang').qty, 2);
   assert.equal(p.plan, 'systeme'); assert.equal(p.weeks, 5); assert.equal(p.monthly, 249);
   assert.match(p.intro, /receber mais reservas e aparecer no Google/);
-  assert.equal(PP.totals(p).setup, 1200 + 300 + 500 + 600 + 250 + 200);
+  assert.equal(p.items.find((i) => i.k === 'copy').qty, 3); // por idioma
+  assert.equal(PP.totals(p).setup, 1000 + 2 * 30 + 2 * 50 + 500 + 3 * 10 + 50);
   const p2 = PP.suggest(b, { catalogPrices: { site: 1500 } }, 'x'); assert.equal(p2.items[0].price, 1500);
 });
 
