@@ -18,6 +18,7 @@ const RV = require('./lib/reviews');
 const BK = require('./lib/backup');
 const BANK = require('./lib/bank');
 const ESP = require('./lib/espace');
+const BF = require('./lib/briefing');
 const BC = require('./lib/brandcard');
 const PAUSE_TPL = fs.readFileSync(path.join(__dirname, 'integrations', 'pause-page.html'), 'utf8');
 // script para sites estáticos: contador de visitas + pausa do lado do visitante quando a mensalidade está suspensa
@@ -160,7 +161,7 @@ function cleanClient(f, c) {
 }
 
 // ---------- telas do painel ----------
-const NAV = (cur) => `<nav class="nav"><a href="/admin"${cur === 'home' ? ' aria-current="page"' : ''}>Clientes</a><a href="/admin/new"${cur === 'new' ? ' aria-current="page"' : ''}>+ Novo</a><a href="/admin/settings"${cur === 'set' ? ' aria-current="page"' : ''}>Ajustes</a><form method="post" action="/admin/logout" style="margin:0"><button>Sair</button></form></nav>`;
+const NAV = (cur) => `<nav class="nav"><a href="/admin"${cur === 'home' ? ' aria-current="page"' : ''}>Clientes</a><a href="/admin/briefings"${cur === 'brf' ? ' aria-current="page"' : ''}>Briefings${(() => { const n = (db().briefings || []).filter((b) => b.status === 'new').length; return n ? ' (' + n + ')' : ''; })()}</a><a href="/admin/new"${cur === 'new' ? ' aria-current="page"' : ''}>+ Novo</a><a href="/admin/settings"${cur === 'set' ? ' aria-current="page"' : ''}>Ajustes</a><form method="post" action="/admin/logout" style="margin:0"><button>Sair</button></form></nav>`;
 const STXT = (s) => ({
   ok: `Vence em ${s.daysToDue} dias`,
   soon: s.daysToDue === 0 ? 'Vence hoje' : `Vence em ${s.daysToDue} ${s.daysToDue > 1 ? 'dias' : 'dia'}`,
@@ -193,6 +194,7 @@ function dashboard(flash) {
 <div class="stat"><span class="lab">Recebido em ${fdate(month + '-01', 'pt', 1).replace(/^1 de /, '')}</span><b>${eur(cashed, 'pt')}</b></div>
 <div class="stat"><span class="lab">Em atraso</span><b class="${late.length ? 's-grace' : ''}">${late.length}</b></div>
 <div class="stat"><span class="lab">Sites fora do ar</span><b class="${rows.some((r) => r.s.status === 'suspended') ? 's-suspended' : ''}">${rows.filter((r) => r.s.status === 'suspended').length}</b></div></div>
+${(() => { const nb = (db().briefings || []).filter((b) => b.status === 'new'); return nb.length ? `<h2>Briefings novos (${nb.length})</h2><div class="tbl"><table><tr><th>Empresa</th><th>Contato</th><th>Precisa de</th><th>Recebido</th></tr>${nb.map((b) => `<tr><td><a href="/admin/briefings/${b.id}"><b>${esc(b.answers.company)}</b></a></td><td>${esc(b.answers.contact)}</td><td>${esc(BF.answerText(BF.QS.find((q) => q.k === 'need'), b.answers))}</td><td class="mono muted">${esc(b.at.slice(0, 10))}</td></tr>`).join('')}</table></div>` : ''; })()}
 ${(() => { const open = db().requests.filter((r) => r.status !== 'done').sort((a, b) => (b.urgency === 'urgent') - (a.urgency === 'urgent') || a.at.localeCompare(b.at)); return open.length ? `<h2>Pedidos em aberto (${open.length})</h2><div class="tbl"><table><tr><th>Cliente</th><th>Pedido</th><th>Desde</th><th>Status</th></tr>${open.map((r) => { const c = byId(r.clientId); return `<tr><td>${c ? `<a href="/admin/c/${c.id}">${esc(c.name)}</a>` : ''}</td><td>${r.urgency === 'urgent' ? '<b class="s-grace">URGENTE · </b>' : ''}${esc(r.title)}</td><td class="mono muted">${esc(r.at.slice(0, 10))}</td><td>${r.status === 'doing' ? '<span class="s-soon">Em andamento</span>' : '<span class="s-ok">Novo</span>'}</td></tr>`; }).join('')}</table></div>` : ''; })()}
 <h2>Visão geral</h2><div class="tbl"><table><tr><th>Cliente</th><th>Status</th><th>Mensalidade</th><th>Pago até</th><th>Sites</th><th>Visitantes 30 d</th><th>Pedidos</th><th></th></tr>${rows.map(({ c, s }) => { const U = UP.summary(c.id, 30); const S2 = ST.summary(c.id, 30); const nrq = db().requests.filter((r) => r.clientId === c.id && r.status !== 'done').length; return `<tr><td><a href="/admin/c/${c.id}"><b>${esc(c.name)}</b></a><br><span class="mono muted">DRT-${c.no}</span></td><td><span class="s-${s.status}">${esc(STATUS[s.status].pt)}</span></td><td>${eur(c.amount, 'pt')}</td><td>${fdate(c.paidUntil, 'pt')}</td><td>${U.hasData ? (U.down ? '<span class="s-suspended">● fora do ar</span>' : `<span class="s-ok">●</span> ${String(U.uptimePct).replace('.', ',')} %`) : '<span class="muted">—</span>'}</td><td>${S2.hasData ? S2.visitors : '<span class="muted">—</span>'}</td><td>${nrq || '<span class="muted">0</span>'}</td><td><a class="btn sm" href="/admin/c/${c.id}/espace" target="_blank">Ver como cliente</a></td></tr>`; }).join('')}</table></div>
 <h2>Carteirinhas</h2>
@@ -577,6 +579,36 @@ const server = http.createServer(async (req, res) => {
       return html(res, 200, cardPage(c, lang));
     }
 
+    // ----- briefing público -----
+    if (p === '/briefing' && (m === 'GET' || m === 'HEAD')) {
+      const ql = u.searchParams.get('lang'); const al = String(req.headers['accept-language'] || '').slice(0, 2).toLowerCase();
+      const lang = BF.LANGS.includes(ql) ? ql : BF.LANGS.includes(al) ? al : 'fr';
+      const wa = S().whatsapp ? 'https://wa.me/' + S().whatsapp.replace(/\D/g, '') : '';
+      return html(res, 200, BF.formPage(lang, wa), { 'Cache-Control': 'no-cache' });
+    }
+    if (p === '/briefing' && m === 'POST') {
+      if (!sameOrigin(req)) return json(res, 403, { error: 'origin' });
+      const k = 'b|' + ip(req); const tr = tries.get(k) || { n: 0, at: Date.now() };
+      if (Date.now() - tr.at > 3600000) { tr.n = 0; tr.at = Date.now(); }
+      if (tr.n >= 6) return json(res, 429, { error: 'many' });
+      let b; try { b = JSON.parse((await readBody(req, 60e6)).toString('utf8')); } catch (e) { return json(res, 400, { error: 'body' }); }
+      if (!b || b.website || Number(b.ms) < 8000) return json(res, 200, { ok: true }); // robô: finge que deu certo
+      const { answers, miss } = BF.clean(b.answers);
+      if (miss.length) return json(res, 400, { error: 'missing', fields: miss });
+      tr.n++; tries.set(k, tr);
+      const d = db(); if (!Array.isArray(d.briefings)) d.briefings = [];
+      const id = store.id(8); const lang = BF.LANGS.includes(b.lang) ? b.lang : 'fr';
+      const files = BF.saveFiles(path.join(store.DIR, 'briefings', id), b.files);
+      const rec = { id, at: new Date().toISOString(), lang, status: 'new', answers, files, note: '' };
+      d.briefings.unshift(rec); store.log('briefing', null, 'Novo briefing: ' + answers.company + ' (' + answers.contact + ')'); store.save();
+      json(res, 200, { ok: true });
+      const link = PUBLIC_URL + '/admin/briefings/' + id;
+      const txt = 'Novo briefing de ' + answers.company + ' (' + answers.contact + ', ' + answers.phone + ', ' + answers.email + ')\n' + files.length + ' arquivo(s)\n\n' + BF.summaryText(rec) + '\n\nAbrir: ' + link;
+      NT.toAdmin({ subject: 'Novo briefing · ' + answers.company, text: 'Novo briefing de ' + answers.company + ': ' + link, html: '<pre style="font:14px/1.5 Arial,sans-serif;white-space:pre-wrap">' + esc(txt) + '</pre><p><a href="' + link + '">Abrir no painel</a></p>' }).catch(() => {});
+      const cm = BF.clientMail(rec); NT.emailRaw({ from: process.env.MAIL_FROM, to: [answers.email], reply_to: S().email || undefined, subject: cm.subject, html: cm.html, text: cm.text }).catch(() => {});
+      return;
+    }
+
     if (p === '/' ) return redirect(res, '/admin');
     if (!p.startsWith('/admin')) return html(res, 404, page({ title: 'DRT Creation', body: '<h1>Page introuvable</h1>', lang: 'fr' }));
 
@@ -619,9 +651,35 @@ const server = http.createServer(async (req, res) => {
 
     const flash = u.searchParams.get('ok') || '';
     if (p === '/admin' && m === 'GET') return html(res, 200, dashboard(flash));
+    // ----- briefings (painel) -----
+    if (p === '/admin/briefings' && m === 'GET') {
+      const list = db().briefings || [];
+      const body = `${flash ? `<div class="flash">${esc(flash)}</div>` : ''}<h1>Briefings</h1><p class="sub">Formulário público: <a href="${PUBLIC_URL}/briefing" target="_blank" rel="noopener">${esc(PUBLIC_URL.replace(/^https?:\/\//, ''))}/briefing</a> · também em <a href="https://www.drtcreation.com/briefing" target="_blank" rel="noopener">drtcreation.com/briefing</a></p>
+<div class="copy" style="max-width:620px;margin:0 0 20px"><input readonly value="${esc(PUBLIC_URL + '/briefing')}" onclick="this.select()"><a class="btn sm" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent('Bonjour ! Pour préparer votre proposition, voici notre briefing (10 min, surtout des cases à cocher) : ' + PUBLIC_URL + '/briefing')}">Mandar por WhatsApp</a></div>
+${list.length ? `<div class="tbl"><table><tr><th>Empresa</th><th>Contato</th><th>Precisa de</th><th>Orçamento</th><th>Arquivos</th><th>Status</th><th>Recebido</th></tr>${list.map((b) => `<tr><td><a href="/admin/briefings/${b.id}"><b>${esc(b.answers.company)}</b></a></td><td>${esc(b.answers.contact)}<br><span class="muted mono">${esc(b.answers.phone)}</span></td><td>${esc(BF.answerText(BF.QS.find((q) => q.k === 'need'), b.answers))}</td><td>${esc(BF.answerText(BF.QS.find((q) => q.k === 'budget'), b.answers)) || '<span class="muted">—</span>'}</td><td>${b.files.length}</td><td><span class="${b.status === 'new' ? 's-ok' : b.status === 'won' ? 's-ok' : b.status === 'lost' ? 's-paused' : 's-soon'}">${esc(BF.STATUSES[b.status] || b.status)}</span></td><td class="mono muted">${esc(b.at.slice(0, 10))}</td></tr>`).join('')}</table></div>` : '<div class="panel"><p style="margin:0">Nenhum briefing ainda. Mande o link acima para o próximo cliente.</p></div>'}`;
+      return html(res, 200, page({ title: 'Briefings · DRT Creation', nav: NAV('brf'), body }));
+    }
+    if ((mm = p.match(/^\/admin\/briefings\/([A-Za-z0-9_-]+)(\/f\/(\d+)|\/status|\/delete)?$/))) {
+      const list = db().briefings || []; const b = list.find((x) => x.id === mm[1]);
+      if (!b) return html(res, 404, page({ title: 'Briefing', nav: NAV('brf'), body: '<h1>Briefing não encontrado</h1>' }));
+      const dir = path.join(store.DIR, 'briefings', b.id);
+      if (mm[3] != null && m === 'GET') { const f = b.files[Number(mm[3])]; if (!f) return html(res, 404, 'Arquivo não encontrado'); res.writeHead(200, { 'Content-Type': f.type === 'image/svg+xml' ? 'text/plain; charset=utf-8' : f.type, 'Content-Disposition': (/^image\/(jpeg|png|webp|gif)$|^application\/pdf$/.test(f.type) ? 'inline' : 'attachment') + '; filename="' + f.file.replace(/"/g, '') + '"', 'Cache-Control': 'private, max-age=3600', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'" }); return fs.createReadStream(path.join(dir, f.file)).on('error', () => res.end()).pipe(res); }
+      if (mm[2] === '/status' && m === 'POST') { const f = form(await readBody(req, 20000)); if (BF.STATUSES[f.status]) b.status = f.status; b.note = String(f.note || '').slice(0, 5000); store.save(); return redirect(res, '/admin/briefings/' + b.id + '?ok=' + encodeURIComponent('Salvo.')); }
+      if (mm[2] === '/delete' && m === 'POST') { try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) { /* ok */ } db().briefings = list.filter((x) => x !== b); store.log('briefing', null, 'Briefing apagado: ' + b.answers.company); store.save(); return redirect(res, '/admin/briefings?ok=' + encodeURIComponent('Briefing apagado.')); }
+      if (m !== 'GET') return html(res, 405, 'Método');
+      const a = b.answers; const phone = String(a.phone || '').replace(/\D/g, '');
+      const body = `${flash ? `<div class="flash">${esc(flash)}</div>` : ''}<p style="margin:22px 0 0"><a class="mono muted" href="/admin/briefings">← Briefings</a></p>
+<h1>${esc(a.company)}</h1><p class="sub">${esc(a.contact)} · recebido em ${fdate(b.at.slice(0, 10), 'pt', 1)} às ${esc(new Date(b.at).toLocaleTimeString('pt-BR', { timeZone: 'Europe/Brussels', hour: '2-digit', minute: '2-digit' }))} · formulário em ${esc(b.lang.toUpperCase())}</p>
+<div class="row" style="margin:0 0 18px">${phone ? `<a class="btn pri" target="_blank" rel="noopener" href="https://wa.me/${phone}">WhatsApp ${esc(a.phone)}</a>` : ''}<a class="btn" href="mailto:${esc(a.email)}">${esc(a.email)}</a><a class="btn" href="/admin/new?from=${b.id}">Cadastrar como cliente</a></div>
+<form class="f panel" method="post" action="/admin/briefings/${b.id}/status" style="max-width:620px"><div class="two"><label>Status<select name="status">${Object.entries(BF.STATUSES).map(([k, v]) => `<option value="${k}"${b.status === k ? ' selected' : ''}>${v}</option>`).join('')}</select></label></div>
+<label>Notas internas<textarea name="note" rows="3">${esc(b.note || '')}</textarea></label><div class="row"><button class="btn pri">Salvar</button></div></form>
+${BF.detailHtml(b)}
+<form method="post" action="/admin/briefings/${b.id}/delete" style="margin:40px 0 0" onsubmit="return confirm('Apagar este briefing e os arquivos? Não dá para desfazer.')"><button class="btn danger sm">Apagar briefing</button></form>`;
+      return html(res, 200, page({ title: a.company + ' · Briefing', nav: NAV('brf'), body }));
+    }
     if (p === '/admin/new' && m === 'GET') {
       const nx = B.addMonths(B.today().slice(0, 8) + '01', 1);
-      return html(res, 200, page({ title: 'Novo cliente · DRT Creation', nav: NAV('new'), body: `<h1>Novo cliente</h1><p class="sub">Cadastre a empresa e gere a carteirinha.</p><div class="panel">${clientForm({ plan: 'site', amount: PLAN.site.price, dueDay: 1, firstDue: nx, lang: 'fr' }, true)}</div>` }));
+      return html(res, 200, page({ title: 'Novo cliente · DRT Creation', nav: NAV('new'), body: `<h1>Novo cliente</h1><p class="sub">Cadastre a empresa e gere a carteirinha.</p><div class="panel">${clientForm((() => { const base = { plan: 'site', amount: PLAN.site.price, dueDay: 1, firstDue: nx, lang: 'fr' }; const b = (db().briefings || []).find((x) => x.id === u.searchParams.get('from')); if (!b) return base; const a = b.answers; return { ...base, name: a.company, contactName: a.contact, phone: a.phone, email: a.email, lang: b.lang === 'pt' ? 'pt' : 'fr', sites: a.currentSite ? [/^https?:/.test(a.currentSite) ? a.currentSite : 'https://' + a.currentSite] : [], notes: 'Briefing de ' + b.at.slice(0, 10) + ' · ' + PUBLIC_URL + '/admin/briefings/' + b.id + (a.vat ? '\nTVA: ' + a.vat : '') + (a.address ? '\nEndereço: ' + a.address : '') }; })(), true)}</div>` }));
     }
     if (p === '/admin/clients' && m === 'POST') {
       const f = form(await readBody(req));
