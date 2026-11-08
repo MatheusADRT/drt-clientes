@@ -20,6 +20,7 @@ const BANK = require('./lib/bank');
 const ESP = require('./lib/espace');
 const BF = require('./lib/briefing');
 const PR = require('./lib/prospects');
+const PP = require('./lib/proposal');
 const BC = require('./lib/brandcard');
 const PAUSE_TPL = fs.readFileSync(path.join(__dirname, 'integrations', 'pause-page.html'), 'utf8');
 // script para sites estáticos: contador de visitas + pausa do lado do visitante quando a mensalidade está suspensa
@@ -162,7 +163,7 @@ function cleanClient(f, c) {
 }
 
 // ---------- telas do painel ----------
-const NAV = (cur) => `<nav class="nav"><a href="/admin"${cur === 'home' ? ' aria-current="page"' : ''}>Clientes</a><a href="/admin/prospects"${cur === 'pro' ? ' aria-current="page"' : ''}>Prospects${(() => { const n = PR.stats(db().prospects || []).due.length; return n ? ' (' + n + ')' : ''; })()}</a><a href="/admin/briefings"${cur === 'brf' ? ' aria-current="page"' : ''}>Briefings${(() => { const n = (db().briefings || []).filter((b) => b.status === 'new').length; return n ? ' (' + n + ')' : ''; })()}</a><a href="/admin/new"${cur === 'new' ? ' aria-current="page"' : ''}>+ Novo</a><a href="/admin/settings"${cur === 'set' ? ' aria-current="page"' : ''}>Ajustes</a><form method="post" action="/admin/logout" style="margin:0"><button>Sair</button></form></nav>`;
+const NAV = (cur) => `<nav class="nav"><a href="/admin"${cur === 'home' ? ' aria-current="page"' : ''}>Clientes</a><a href="/admin/prospects"${cur === 'pro' ? ' aria-current="page"' : ''}>Prospects${(() => { const n = PR.stats(db().prospects || []).due.length; return n ? ' (' + n + ')' : ''; })()}</a><a href="/admin/proposals"${cur === 'prop' ? ' aria-current="page"' : ''}>Propostas</a><a href="/admin/briefings"${cur === 'brf' ? ' aria-current="page"' : ''}>Briefings${(() => { const n = (db().briefings || []).filter((b) => b.status === 'new').length; return n ? ' (' + n + ')' : ''; })()}</a><a href="/admin/new"${cur === 'new' ? ' aria-current="page"' : ''}>+ Novo</a><a href="/admin/settings"${cur === 'set' ? ' aria-current="page"' : ''}>Ajustes</a><form method="post" action="/admin/logout" style="margin:0"><button>Sair</button></form></nav>`;
 const STXT = (s) => ({
   ok: `Vence em ${s.daysToDue} dias`,
   soon: s.daysToDue === 0 ? 'Vence hoje' : `Vence em ${s.daysToDue} ${s.daysToDue > 1 ? 'dias' : 'dia'}`,
@@ -286,7 +287,7 @@ ${pays.length ? `<div class="tbl"><table><tr><th>Data</th><th>Valor</th><th>Per�
 
 function settingsPage(flash) {
   const s = S();
-  const body = `${flash ? `<div class="flash">${esc(flash)}</div>` : ''}<h1>Ajustes</h1><p class="sub">Valem para todos os clientes (cada cliente pode ter a sua própria carência).</p>
+  const body = `${flash ? `<div class="flash">${esc(flash)}</div>` : ''}<h1>Ajustes</h1><p class="sub">Valem para todos os clientes (cada cliente pode ter a sua própria carência).</p><p style="margin:0 0 18px"><a class="btn sm" href="/admin/catalog">Catálogo de preços das propostas →</a></p>
 <div class="panel"><form class="f" method="post" action="/admin/settings"><div class="two">
 <label>Carência padrão (dias)<input name="graceDays" type="number" min="0" max="30" value="${s.graceDays}"></label>
 <label>Avisar quantos dias antes<input name="reminderDays" type="number" min="0" max="15" value="${s.reminderDays}"></label></div>
@@ -581,6 +582,30 @@ const server = http.createServer(async (req, res) => {
       return html(res, 200, cardPage(c, lang));
     }
 
+    // ----- proposta (cliente) -----
+    if ((mm = p.match(/^\/p\/([A-Za-z0-9_-]{16,64})(\/accept)?$/))) {
+      const pp = (db().proposals || []).find((x) => x.token === mm[1]);
+      if (!pp || pp.status === 'draft' && !isAdmin(req)) return html(res, 404, page({ title: 'DRT Creation', body: '<h1>Proposition introuvable</h1><p class="sub">Ce lien n’existe plus. Contactez DRT Creation.</p>', lang: 'fr' }));
+      const wa = S().whatsapp ? 'https://wa.me/' + S().whatsapp.replace(/\D/g, '') + '?text=' + encodeURIComponent((pp.lang === 'pt' ? 'Oi! Sobre a proposta ' : 'Bonjour ! À propos de la proposition ') + pp.no + ' (' + pp.client.company + ')') : '';
+      if (mm[2] && m === 'POST') {
+        if (!sameOrigin(req)) return html(res, 403, 'Origine invalide');
+        const f = form(await readBody(req, 4000));
+        const expired = pp.validUntil && pp.validUntil < B.today();
+        if (pp.status !== 'accepted' && !expired && f.ok === '1' && String(f.name || '').trim()) {
+          pp.status = 'accepted'; pp.acceptedAt = new Date().toISOString(); pp.acceptedBy = String(f.name).trim().slice(0, 80); pp.acceptedIp = ip(req);
+          const pr = (db().prospects || []).find((x) => x.id === pp.prospectId); if (pr) { pr.status = 'won'; pr.nextAt = ''; PR.log(pr, 'won', 'Aceitou a proposta ' + pp.no); }
+          store.log('proposal', null, 'Proposta ' + pp.no + ' aceita por ' + pp.acceptedBy + ' (' + pp.client.company + ')'); store.save();
+          const tt = PP.totals(pp); const link = PUBLIC_URL + '/admin/proposals/' + pp.id;
+          NT.toAdmin({ subject: '🎉 Proposta aceita · ' + pp.client.company, text: 'A ' + pp.client.company + ' aceitou a proposta ' + pp.no + ' (' + pp.acceptedBy + '): criação ' + tt.setup + ' €, manutenção ' + tt.monthly + ' €/mês. ' + link, html: '<p><b>' + esc(pp.client.company) + '</b> aceitou a proposta <b>' + esc(pp.no) + '</b>.</p><p>Assinado por: ' + esc(pp.acceptedBy) + '<br>Criação: ' + tt.setup + ' €<br>Manutenção: ' + tt.monthly + ' €/mês</p><p>Próximo passo: preparar o contrato e cadastrar o cliente.</p><p><a href="' + link + '">Abrir no painel</a></p>' }).catch(() => {});
+        }
+        return redirect(res, '/p/' + pp.token + '?ok=1');
+      }
+      if (m !== 'GET' && m !== 'HEAD') return html(res, 405, 'Méthode');
+      const admin = isAdmin(req);
+      if (!admin && m === 'GET') { pp.views = (pp.views || 0) + 1; pp.lastViewAt = new Date().toISOString(); if (pp.status === 'sent') pp.status = 'viewed'; store.save(); }
+      return html(res, 200, PP.render(pp, { wa, preview: admin }), { 'X-Robots-Tag': 'noindex' });
+    }
+
     // ----- briefing público -----
     if (p === '/briefing' && (m === 'GET' || m === 'HEAD')) {
       const ql = u.searchParams.get('lang'); const al = String(req.headers['accept-language'] || '').slice(0, 2).toLowerCase();
@@ -655,6 +680,64 @@ const server = http.createServer(async (req, res) => {
 
     const flash = u.searchParams.get('ok') || '';
     if (p === '/admin' && m === 'GET') return html(res, 200, dashboard(flash));
+    // ----- propostas (painel) -----
+    if ((mm = p.match(/^\/admin\/briefings\/([A-Za-z0-9_-]+)\/proposal$/)) && m === 'POST') {
+      const b = (db().briefings || []).find((x) => x.id === mm[1]); if (!b) return html(res, 404, 'Briefing não encontrado');
+      const d = db(); if (!Array.isArray(d.proposals)) d.proposals = [];
+      const yr = B.today().slice(0, 4); d.proposalSeq = d.proposalSeq || {}; d.proposalSeq[yr] = (d.proposalSeq[yr] || 0) + 1;
+      const pp = { id: store.id(6), token: store.id(18), at: new Date().toISOString(), ...PP.suggest(b, S(), 'P' + yr + '-' + String(d.proposalSeq[yr]).padStart(3, '0')) };
+      pp.prospectId = b.prospectId || null; d.proposals.unshift(pp); b.proposalId = pp.id; if (b.status === 'new') b.status = 'contacted';
+      store.log('proposal', null, 'Proposta ' + pp.no + ' criada para ' + pp.client.company); store.save();
+      return redirect(res, '/admin/proposals/' + pp.id + '?ok=' + encodeURIComponent('Proposta montada a partir do briefing. Confira os itens e os preços antes de enviar.'));
+    }
+    if (p === '/admin/proposals' && m === 'GET') {
+      const list = db().proposals || [];
+      const body = `${flash ? `<div class="flash">${esc(flash)}</div>` : ''}<h1>Propostas</h1><p class="sub">Para criar uma proposta, abra um <a href="/admin/briefings">briefing</a> e clique em "Criar proposta".</p>
+${list.length ? `<div class="tbl"><table><tr><th>Nº</th><th>Empresa</th><th>Criação</th><th>Mensal</th><th>Status</th><th>Vistas</th><th>Data</th></tr>${list.map((x) => { const tt = PP.totals(x); const S2 = PP.STATUS[x.status] || PP.STATUS.draft; return `<tr><td class="mono"><a href="/admin/proposals/${x.id}">${esc(x.no)}</a></td><td><a href="/admin/proposals/${x.id}"><b>${esc(x.client.company)}</b></a></td><td>${PP.eur(tt.setup, 'fr')}</td><td>${tt.monthly ? PP.eur(tt.monthly, 'fr') : '—'}</td><td><span class="${S2[1]}">${S2[0]}</span></td><td>${x.views || 0}</td><td class="mono muted">${esc((x.sentAt || x.at).slice(0, 10))}</td></tr>`; }).join('')}</table></div>` : '<div class="panel"><p style="margin:0">Nenhuma proposta ainda.</p></div>'}`;
+      return html(res, 200, page({ title: 'Propostas · DRT Creation', nav: NAV('prop'), body }));
+    }
+    if ((mm = p.match(/^\/admin\/proposals\/([A-Za-z0-9_-]+)(\/send|\/delete|\/status)?$/))) {
+      const list = db().proposals || []; const pp = list.find((x) => x.id === mm[1]);
+      if (!pp) return html(res, 404, page({ title: 'Proposta', nav: NAV('prop'), body: '<h1>Proposta não encontrada</h1>' }));
+      const url = PUBLIC_URL + '/p/' + pp.token;
+      if (mm[2] === '/send' && m === 'POST') {
+        const f = form(await readBody(req, 2000));
+        if (pp.status === 'draft') { pp.status = 'sent'; pp.sentAt = new Date().toISOString(); }
+        const pr = (db().prospects || []).find((x) => x.id === pp.prospectId); if (pr && !['won', 'proposal'].includes(pr.status)) PR.act(pr, 'proposal');
+        store.log('proposal', null, 'Proposta ' + pp.no + ' enviada (' + (f.via || 'link') + ')'); store.save();
+        const txt = PP.shareText(pp, url);
+        if (f.via === 'email' && pp.client.email) {
+          const r = await NT.emailRaw({ from: process.env.MAIL_FROM, to: [pp.client.email], reply_to: S().email || undefined, subject: (pp.lang === 'pt' ? 'Proposta ' : pp.lang === 'en' ? 'Proposal ' : pp.lang === 'nl' ? 'Voorstel ' : 'Proposition ') + pp.no + ' · ' + pp.client.company + ' · DRT Creation', text: txt, html: '<div style="font:15px/1.6 Arial,sans-serif;color:#07141a;max-width:560px"><p>' + esc(txt).replace(esc(url), '</p><p><a href="' + url + '" style="display:inline-block;background:#1d44d6;color:#fff;padding:12px 18px;text-decoration:none;font-weight:bold">' + (pp.lang === 'pt' ? 'Ver a proposta' : pp.lang === 'en' ? 'View the proposal' : pp.lang === 'nl' ? 'Voorstel bekijken' : 'Voir la proposition') + '</a></p><p>') + '</p><p>Matheus D.<br><b>DRT Creation</b> · Bruxelles</p></div>' });
+          return redirect(res, '/admin/proposals/' + pp.id + '?ok=' + encodeURIComponent(r && r.ok ? 'E-mail enviado para ' + pp.client.email + '.' : 'O e-mail não saiu. Mande pelo WhatsApp ou copie o link.'));
+        }
+        const n = PR.waNumber(pp.client.phone);
+        return redirect(res, 'https://wa.me/' + n + '?text=' + encodeURIComponent(txt));
+      }
+      if (mm[2] === '/status' && m === 'POST') { const f = form(await readBody(req, 2000)); if (PP.STATUS[f.status]) pp.status = f.status; store.save(); return redirect(res, '/admin/proposals/' + pp.id + '?ok=' + encodeURIComponent('Status atualizado.')); }
+      if (mm[2] === '/delete' && m === 'POST') { db().proposals = list.filter((x) => x !== pp); store.save(); return redirect(res, '/admin/proposals?ok=' + encodeURIComponent('Proposta ' + pp.no + ' apagada.')); }
+      if (m === 'POST') { PP.fromForm((await readBody(req, 100000)).toString('utf8'), pp); store.save(); return redirect(res, '/admin/proposals/' + pp.id + '?ok=' + encodeURIComponent('Salvo.')); }
+      const tt = PP.totals(pp); const S2 = PP.STATUS[pp.status] || PP.STATUS.draft;
+      const body = `${flash ? `<div class="flash">${esc(flash)}</div>` : ''}<p style="margin:22px 0 0"><a class="mono muted" href="/admin/proposals">← Propostas</a></p>
+<h1>${esc(pp.no)} · ${esc(pp.client.company)}</h1><p class="sub"><span class="${S2[1]}">${S2[0]}</span> · criação ${PP.eur(tt.setup, 'fr')}${tt.monthly ? ' · manutenção ' + PP.eur(tt.monthly, 'fr') + '/mês' : ''} · ${pp.views || 0} visualização(ões) do cliente${pp.lastViewAt ? ' (última ' + esc(new Date(pp.lastViewAt).toLocaleString('pt-BR', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })) + ')' : ''}${pp.acceptedBy ? ' · aceita por ' + esc(pp.acceptedBy) : ''}</p>
+<div class="row" style="margin:0 0 18px"><a class="btn pri" href="/p/${pp.token}" target="_blank" rel="noopener">Ver como o cliente</a>
+${pp.client.phone ? `<form method="post" action="/admin/proposals/${pp.id}/send" target="_blank" onsubmit="setTimeout(function(){location.reload()},1500)" style="margin:0"><input type="hidden" name="via" value="whatsapp"><button class="btn wa" style="background:#1f7a4d;border-color:#1f7a4d;color:#fff">Enviar por WhatsApp</button></form>` : ''}
+${pp.client.email ? `<form method="post" action="/admin/proposals/${pp.id}/send" style="margin:0" onsubmit="return confirm('Enviar a proposta por e-mail para ${esc(pp.client.email)}?')"><input type="hidden" name="via" value="email"><button class="btn">Enviar por e-mail</button></form>` : ''}
+${pp.briefingId ? `<a class="btn" href="/admin/briefings/${pp.briefingId}">Ver briefing</a>` : ''}</div>
+<div class="copy" style="max-width:640px;margin:0 0 8px"><input readonly value="${esc(url)}" onclick="this.select()"><button type="button" class="btn sm" onclick="navigator.clipboard.writeText(${esc(JSON.stringify(url))});this.textContent='Copiado ✓'">Copiar link</button></div>
+<p class="muted" style="font-size:13px;margin:0 0 6px">O cliente abre o link, pode imprimir em PDF e aceitar online. Você recebe um e-mail quando ele aceitar. Enquanto estiver como rascunho, só você consegue abrir o link.</p>
+<h2>Editar</h2>${PP.editForm(pp)}
+<form method="post" action="/admin/proposals/${pp.id}/status" class="row" style="margin:26px 0 0"><select name="status" style="font:14px var(--body);padding:9px;background:var(--bg);color:var(--text);border:1px solid var(--line-2)">${Object.entries(PP.STATUS).map(([k, v]) => `<option value="${k}"${pp.status === k ? ' selected' : ''}>${v[0]}</option>`).join('')}</select><button class="btn sm">Mudar status</button></form>
+<form method="post" action="/admin/proposals/${pp.id}/delete" style="margin:30px 0 0" onsubmit="return confirm('Apagar a proposta ${esc(pp.no)}?')"><button class="btn danger sm">Apagar proposta</button></form>`;
+      return html(res, 200, page({ title: pp.no + ' · Proposta', nav: NAV('prop'), body }));
+    }
+    if (p === '/admin/catalog') {
+      const set = S();
+      if (m === 'POST') { const q = new URLSearchParams((await readBody(req, 20000)).toString('utf8')); set.catalogPrices = {}; for (const c of PP.CATALOG) { const v = parseFloat(String(q.get('c_' + c[0]) || '').replace(',', '.')); if (Number.isFinite(v) && v >= 0) set.catalogPrices[c[0]] = Math.round(v * 100) / 100; } store.save(); return redirect(res, '/admin/catalog?ok=' + encodeURIComponent('Preços salvos. Valem para as próximas propostas.')); }
+      const cat = PP.catalog(set);
+      const body = `${flash ? `<div class="flash">${esc(flash)}</div>` : ''}<h1>Catálogo de preços</h1><p class="sub">Preços que entram automaticamente quando uma proposta é montada a partir do briefing. Você sempre pode mudar na própria proposta.</p>
+<form class="f panel" method="post" action="/admin/catalog" style="max-width:760px"><div class="tbl"><table><tr><th>Item</th><th style="width:140px">Preço (€)</th></tr>${cat.map((c) => `<tr><td><b>${esc(c.label[1])}</b><br><span class="muted" style="font-size:13px">${esc(c.desc[1])}</span></td><td><input name="c_${c.k}" inputmode="decimal" value="${c.price}" style="width:120px"></td></tr>`).join('')}</table></div><div class="row"><button class="btn pri">Salvar preços</button></div></form>`;
+      return html(res, 200, page({ title: 'Catálogo · DRT Creation', nav: NAV('set'), body }));
+    }
     // ----- prospects -----
     if (p === '/admin/prospects' && m === 'GET') {
       const list = db().prospects || []; const S1 = PR.stats(list); const tab = u.searchParams.get('s') || (S1.due.length ? 'due' : list.some((x) => x.status === 'todo') ? 'todo' : 'open');
@@ -742,7 +825,7 @@ ${list.length ? `<div class="tbl"><table><tr><th>Empresa</th><th>Contato</th><th
       const a = b.answers; const phone = String(a.phone || '').replace(/\D/g, '');
       const body = `${flash ? `<div class="flash">${esc(flash)}</div>` : ''}<p style="margin:22px 0 0"><a class="mono muted" href="/admin/briefings">← Briefings</a></p>
 <h1>${esc(a.company)}</h1><p class="sub">${esc(a.contact)} · recebido em ${fdate(b.at.slice(0, 10), 'pt', 1)} às ${esc(new Date(b.at).toLocaleTimeString('pt-BR', { timeZone: 'Europe/Brussels', hour: '2-digit', minute: '2-digit' }))} · formulário em ${esc(b.lang.toUpperCase())}</p>
-<div class="row" style="margin:0 0 18px">${phone ? `<a class="btn pri" target="_blank" rel="noopener" href="https://wa.me/${phone}">WhatsApp ${esc(a.phone)}</a>` : ''}<a class="btn" href="mailto:${esc(a.email)}">${esc(a.email)}</a><a class="btn" href="/admin/new?from=${b.id}">Cadastrar como cliente</a></div>
+<div class="row" style="margin:0 0 18px">${phone ? `<a class="btn pri" target="_blank" rel="noopener" href="https://wa.me/${phone}">WhatsApp ${esc(a.phone)}</a>` : ''}<a class="btn" href="mailto:${esc(a.email)}">${esc(a.email)}</a>${b.proposalId && (db().proposals || []).some((x) => x.id === b.proposalId) ? `<a class="btn pri" href="/admin/proposals/${b.proposalId}">Abrir proposta</a>` : `<form method="post" action="/admin/briefings/${b.id}/proposal" style="margin:0"><button class="btn pri">Criar proposta</button></form>`}<a class="btn" href="/admin/new?from=${b.id}">Cadastrar como cliente</a></div>
 <form class="f panel" method="post" action="/admin/briefings/${b.id}/status" style="max-width:620px"><div class="two"><label>Status<select name="status">${Object.entries(BF.STATUSES).map(([k, v]) => `<option value="${k}"${b.status === k ? ' selected' : ''}>${v}</option>`).join('')}</select></label></div>
 <label>Notas internas<textarea name="note" rows="3">${esc(b.note || '')}</textarea></label><div class="row"><button class="btn pri">Salvar</button></div></form>
 ${BF.detailHtml(b)}
