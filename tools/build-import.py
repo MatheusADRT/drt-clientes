@@ -15,7 +15,7 @@ def norm(s): return re.sub(r'[^a-z0-9]+', ' ', unicodedata.normalize('NFD', s or
 
 def kind(types, name):
     t = ' '.join(types) + ' ' + name.lower()
-    if re.search(r'barber|hair|beauty|nail|spa|coiff|esth', t): return 'beauty'
+    if re.search(r'barber|hair|beauty|nail|\bspa\b|coiff|esth', t): return 'beauty'
     if re.search(r'restaurant|food|snack|bar\b|bistro|cafe|bakery|meal|grill|pizza|sushi', t): return 'resto'
     if re.search(r'store|shop|party|event|ballon|balloon|decor', t): return 'events'
     return 'other'
@@ -30,6 +30,7 @@ def main():
         for w in json.load(open(f)): web[norm(w['name'])] = w
     cur = json.load(open(OUT)) if os.path.exists(OUT) else []
     have = {x['key'] for x in cur}
+    phones = {re.sub(r'\D', '', x.get('phone') or '')[-9:] for x in cur if x.get('phone')}
     added, skipped = [], {'ok': 0, 'dup': 0, 'chain': 0, 'client': 0, 'closed': 0}
     for p in places:
         key = p['place_id']; name = p['name']
@@ -37,6 +38,8 @@ def main():
         if norm(name) in SKIP_NAMES: skipped['client'] += 1; continue
         if CHAINS.search(name): skipped['chain'] += 1; continue
         if p.get('business_status') and p['business_status'] != 'OPERATIONAL': skipped['closed'] += 1; continue
+        ph9 = re.sub(r'\D', '', p.get('phone') or '')[-9:]
+        if ph9 and ph9 in phones: skipped['dup'] += 1; continue
         w = web.get(norm(name), {})
         sig = w.get('signal', 'unknown')
         if sig == 'ok': skipped['ok'] += 1; continue
@@ -52,14 +55,15 @@ def main():
         pc = re.search(r'\b(1\d{3})\b', p.get('address', ''))
         lang = 'pt' if re.search(r'brazil|portug|🇧🇷|brasil|cantinho|aldeia|churrasq|castiço|boteco|sabor do', ' '.join(p.get('types', [])) + ' ' + name, re.I) else 'fr'
         notes = ' · '.join(x for x in [
-            ('Sem site próprio' if sig == 'nosite' else 'Só redes sociais' if sig == 'insta' else 'Site fraco: ' + (w.get('website') or '') if sig == 'oldsite' else 'Presença online não confirmada'),
+            ('Nenhum site encontrado na busca (confirmar)' if sig == 'nosite' else 'Só redes sociais' if sig == 'insta' else 'Site fraco: ' + (w.get('website') or '') if sig == 'oldsite' else 'Presença online não confirmada'),
             ('Reservas/pedidos: ' + booking) if booking and not re.search(r'none|aucun|nenhum', booking, re.I) else '',
-            w.get('note') or '', p.get('address', '')] if x)
+            p.get('address', '')] if x)
         added.append({'key': key, 'batch': batch, 'name': name, 'type': typ, 'area': AREAS.get(pc.group(1), '') if pc else '', 'phone': phone,
                       'instagram': w.get('instagram') or '', 'website': w.get('website') or '', 'maps': 'https://www.google.com/maps/place/?q=place_id:' + key,
                       'signals': signals, 'lang': lang, 'channel': 'whatsapp' if mobile else 'visit', 'notes': notes[:600], 'score': score,
                       'rating': p.get('rating'), 'reviews': reviews})
         have.add(key)
+        if ph9: phones.add(ph9)
     json.dump(cur + added, open(OUT, 'w'), ensure_ascii=False, indent=1)
     print(json.dumps({'added': len(added), 'by_score': {s: sum(1 for a in added if a['score'] == s) for s in (3, 2, 1)}, 'skipped': skipped}, ensure_ascii=False))
 
