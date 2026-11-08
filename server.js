@@ -742,7 +742,7 @@ ${pp.briefingId ? `<a class="btn" href="/admin/briefings/${pp.briefingId}">Ver b
     if (p === '/admin/prospects' && m === 'GET') {
       const list = db().prospects || []; const S1 = PR.stats(list); const tab = u.searchParams.get('s') || (S1.due.length ? 'due' : list.some((x) => x.status === 'todo') ? 'todo' : 'open');
       const T = { due: ['Hoje', S1.due], todo: ['A contatar', list.filter((x) => x.status === 'todo')], open: ['Em conversa', list.filter((x) => ['contacted', 'replied', 'briefing', 'proposal'].includes(x.status))], won: ['Fechados', list.filter((x) => x.status === 'won')], lost: ['Arquivo', list.filter((x) => x.status === 'lost')], all: ['Todos', list] };
-      const cur = T[tab] || T.open; const items = cur[1].slice().sort((a, b) => tab === 'due' ? (a.nextAt || '').localeCompare(b.nextAt || '') : b.at.localeCompare(a.at));
+      const cur = T[tab] || T.open; const items = cur[1].slice().sort((a, b) => tab === 'due' ? (a.nextAt || '').localeCompare(b.nextAt || '') : tab === 'todo' ? (b.score || 0) - (a.score || 0) || b.at.localeCompare(a.at) : b.at.localeCompare(a.at));
       const goal = (lab, v, g, sub) => `<div class="stat"><span class="lab">${lab}</span><b>${v}${g ? `<span class="muted" style="font-size:15px"> / ${g}</span>` : ''}</b>${g ? `<div class="bar"><i style="width:${Math.min(100, Math.round(v / g * 100))}%"></i></div>` : ''}${sub ? `<span class="muted" style="font-size:12px">${sub}</span>` : ''}</div>`;
       const BU = PUBLIC_URL + '/briefing';
       const body = `${flash ? `<div class="flash">${esc(flash)}</div>` : ''}<h1>Prospects</h1><p class="sub">${list.length} negócio(s) na lista · semana desde ${fdate(PR.weekStart(), 'pt')}</p>
