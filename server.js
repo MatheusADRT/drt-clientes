@@ -65,6 +65,41 @@ const COOKIE = (v, age) => `drt_s=${v}; Path=/; HttpOnly; SameSite=Strict; Max-A
 // pedidos POST do painel só valem vindos do próprio site
 function sameOrigin(req) { const o = req.headers.origin; if (!o) return true; try { return new URL(o).host === req.headers.host; } catch (e) { return false; } }
 const tries = new Map(); // limite de tentativas de senha por IP
+
+// ---------- acesso do cliente (Espace client: login = n° do contrato ou e-mail + senha) ----------
+function hashPw(pw) { const salt = crypto.randomBytes(16).toString('base64url'); return 'pbkdf2$120000$' + salt + '$' + crypto.pbkdf2Sync(String(pw), salt, 120000, 32, 'sha256').toString('base64url'); }
+function checkPw(pw, h) { const [k, it, salt, hash] = String(h || '').split('$'); if (k !== 'pbkdf2' || !hash) return false; return same(crypto.pbkdf2Sync(String(pw), salt, Number(it), 32, 'sha256').toString('base64url'), hash); }
+function newPassword() { const w = ['soleil', 'bruxelles', 'festa', 'ballon', 'sushi', 'studio', 'jardin', 'tram', 'gaufre', 'canal', 'atelier', 'nuage', 'cerise', 'vitrine', 'lune', 'marche']; const r = () => w[crypto.randomInt(w.length)]; return r() + '-' + r() + '-' + crypto.randomInt(100, 1000); }
+const loginOf = (c) => 'DRT-' + c.no;
+function findClientLogin(id) { const v = String(id || '').trim().toLowerCase().replace(/\s+/g, ''); if (!v) return null; return db().clients.find((c) => !c.archived && c.passHash && (loginOf(c).toLowerCase() === v || String(c.no) === v || (c.email && c.email.toLowerCase() === v))) || null; }
+const CKEY = (c) => hmac('cl|' + c.id + '|' + c.passHash); // trocar a senha desconecta o cliente
+function mkClientSession(c) { const body = c.id + '.' + (Date.now() + 30 * 86400000); return body + '.' + hmac(CKEY(c) + body); }
+function clientFromSession(req) {
+  const v = cookies(req).drt_c; if (!v) return null;
+  const parts = v.split('.'); if (parts.length !== 3) return null;
+  const c = db().clients.find((x) => x.id === parts[0] && !x.archived && x.passHash); if (!c) return null;
+  return same(parts[2], hmac(CKEY(c) + parts[0] + '.' + parts[1])) && Number(parts[1]) > Date.now() ? c : null;
+}
+const CCOOKIE = (v, age) => `drt_c=${v}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${age}${PUBLIC_URL.startsWith('https') ? '; Secure' : ''}`;
+const LT = {
+  fr: { title: 'Espace client', h: 'Espace client', sub: 'Votre carte, vos paiements et les chiffres de votre site.', id: 'Identifiant', idp: 'DRT-100 ou votre e-mail', pw: 'Mot de passe', go: 'Se connecter', bad: 'Identifiant ou mot de passe incorrect.', many: 'Trop de tentatives. Réessayez dans 15 minutes.', lost: 'Mot de passe oublié ? Écrivez-nous sur WhatsApp.', out: 'Se déconnecter', back: '← drtcreation.com' },
+  pt: { title: 'Área do cliente', h: 'Área do cliente', sub: 'Sua carteirinha, seus pagamentos e os números do seu site.', id: 'Login', idp: 'DRT-100 ou seu e-mail', pw: 'Senha', go: 'Entrar', bad: 'Login ou senha incorretos.', many: 'Muitas tentativas. Tente de novo em 15 minutos.', lost: 'Esqueceu a senha? Fale com a gente no WhatsApp.', out: 'Sair', back: '← drtcreation.com' },
+  en: { title: 'Client area', h: 'Client area', sub: 'Your card, your payments and your website figures.', id: 'Login', idp: 'DRT-100 or your e-mail', pw: 'Password', go: 'Sign in', bad: 'Incorrect login or password.', many: 'Too many attempts. Try again in 15 minutes.', lost: 'Forgot your password? Message us on WhatsApp.', out: 'Sign out', back: '← drtcreation.com' },
+};
+function clientLoginPage(lang, err, idv) {
+  const t = LT[lang] || LT.fr; const set = S();
+  const wa = set.whatsapp ? 'https://wa.me/' + set.whatsapp.replace(/\D/g, '') : '';
+  const langs = ['fr', 'pt', 'en'].map((l) => l === lang ? `<b class="mono">${l.toUpperCase()}</b>` : `<a class="mono" href="/login?lang=${l}">${l.toUpperCase()}</a>`).join(' · ');
+  return page({ title: t.title + ' · DRT Creation', lang, body: `<div style="max-width:400px;margin:9vh auto 0">
+<p class="row" style="justify-content:space-between;margin:0 0 18px"><a class="mono muted" href="https://www.drtcreation.com/">${t.back}</a><span>${langs}</span></p>
+<h1>${t.h}</h1><p class="sub">${t.sub}</p>
+${err ? `<div class="flash err" style="margin:0 0 14px">${esc(err)}</div>` : ''}<form class="f" method="post" action="/login?lang=${lang}">
+<label>${t.id}<input name="login" required autofocus autocomplete="username" placeholder="${t.idp}" value="${esc(idv || '')}"></label>
+<label>${t.pw}<input type="password" name="password" required autocomplete="current-password"></label>
+<button class="btn pri">${t.go}</button></form>
+${wa ? `<p class="muted" style="font-size:13px;margin-top:16px"><a href="${esc(wa)}" target="_blank" rel="noopener">${t.lost}</a></p>` : ''}</div>` });
+}
+
 function ip(req) { return String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim(); }
 
 // ---------- regras ----------
@@ -199,7 +234,11 @@ function clientPage(c, flash) {
 <label>Referência / nota<input name="ref" placeholder="${esc(ogm(c, s.due))}"></label>
 <button class="btn pri">✓ Registrar e liberar</button></form></div></div>
 
-<h2>Link da carteirinha (enviar ao cliente)</h2>
+<h2>Acesso à área do cliente</h2>
+<div class="panel"><p style="margin:0 0 10px">Endereço: <b class="mono">${esc(PUBLIC_URL)}/login</b> · login: <b class="mono">${loginOf(c)}</b>${c.email ? ' ou <span class="mono">' + esc(c.email) + '</span>' : ''} · senha: ${c.passHash ? 'definida' : '<b>ainda não definida</b>'}</p>
+<form method="post" action="/admin/c/${c.id}/password" style="margin:0"><button class="btn sm">${c.passHash ? 'Gerar nova senha' : 'Gerar senha'}</button> <span class="muted" style="font-size:13px">A senha aparece uma única vez; a anterior deixa de funcionar.</span></form></div>
+
+<h2>Link direto da carteirinha (alternativa sem senha)</h2>
 <div class="copy"><input readonly value="${esc(PUBLIC_URL + '/c/' + c.token)}" onclick="this.select()"><a class="btn sm" href="/c/${c.token}" target="_blank">Abrir</a>${c.phone ? `<a class="btn sm" href="${esc(waLink(c, s))}" target="_blank" rel="noopener">WhatsApp</a>` : ''}</div>
 
 <h2>Status do site</h2>
@@ -347,13 +386,13 @@ function annualBlock(c, lang, set) {
 ${c.stripeLinkYear ? `<a class="btn pri" style="margin-top:12px" href="${esc(c.stripeLinkYear + (c.stripeLinkYear.includes('?') ? '&' : '?') + 'client_reference_id=' + c.id)}" rel="noopener">${t.yearPay}</a>` : ''}</div>`;
 }
 
-function cardPage(c, lang) {
+function cardPage(c, lang, logged) {
   const t = T[lang]; const s = st(c); const set = S();
   const pays = clientPayments(c).slice(0, 12);
   const other = lang === 'fr' ? 'pt' : 'fr';
   const wa = set.whatsapp ? `https://wa.me/${set.whatsapp.replace(/\D/g, '')}?text=${encodeURIComponent((lang === 'fr' ? 'Bonjour DRT Creation, une question au sujet de ma carte client ' : 'Olá DRT Creation, uma dúvida sobre a minha carteirinha ') + '(' + c.name + ')')}` : '';
   const body = `<div style="max-width:620px;margin:0 auto">
-<p class="row" style="justify-content:flex-end;margin:16px 0 0"><a class="mono" href="?lang=${other}">${other.toUpperCase()}</a></p>
+<p class="row" style="justify-content:flex-end;gap:18px;margin:16px 0 0"><a class="mono" href="?lang=${other}">${other.toUpperCase()}</a>${logged ? `<a class="mono muted" href="/logout?lang=${lang}">${(LT[lang] || LT.fr).out}</a>` : ''}</p>
 <h1 style="margin-top:6px">${t.title}</h1><p class="sub">${t.hello}${c.contactName ? ' ' + esc(c.contactName) : ''}${lang === 'fr' ? ' !' : '!'} ${t.intro}</p>
 ${card(c, s, lang)}
 ${summaryLine(c, s, lang)}
@@ -464,6 +503,28 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { result: stripeEvent(ev) });
     }
 
+    // ----- espace client -----
+    if (p === '/login' || p === '/espace' || p === '/logout') {
+      const ql = u.searchParams.get('lang'); const lang = LT[ql] ? ql : 'fr';
+      if (p === '/logout') return redirect(res, '/login?lang=' + lang, { 'Set-Cookie': CCOOKIE('', 0) });
+      if (p === '/espace') {
+        const c = clientFromSession(req); if (!c) return redirect(res, '/login?lang=' + lang);
+        const cl = ql === 'pt' || ql === 'fr' ? ql : c.lang;
+        return html(res, 200, cardPage(c, cl, true));
+      }
+      if (m === 'GET' || m === 'HEAD') { if (clientFromSession(req)) return redirect(res, '/espace' + (ql ? '?lang=' + ql : '')); return html(res, 200, clientLoginPage(lang)); }
+      if (m === 'POST') {
+        if (!sameOrigin(req)) return html(res, 403, 'Origine invalide');
+        const t = LT[lang]; const k = 'c|' + ip(req); const tr = tries.get(k) || { n: 0, at: Date.now() };
+        if (Date.now() - tr.at > 15 * 60000) { tr.n = 0; tr.at = Date.now(); }
+        if (tr.n >= 8) return html(res, 429, clientLoginPage(lang, t.many));
+        const f = form(await readBody(req, 4000));
+        const c = findClientLogin(f.login);
+        if (c && checkPw(f.password || '', c.passHash)) { tries.delete(k); store.log('client', c.id, 'Acesso à área do cliente'); store.save(); return redirect(res, '/espace' + (ql ? '?lang=' + ql : ''), { 'Set-Cookie': CCOOKIE(mkClientSession(c), 30 * 86400) }); }
+        tr.n++; tries.set(k, tr); return html(res, 401, clientLoginPage(lang, t.bad, f.login));
+      }
+    }
+
     if ((mm = p.match(/^\/c\/([A-Za-z0-9_-]{16,64})$/)) && (m === 'GET' || m === 'HEAD')) {
       const c = db().clients.find((x) => x.token === mm[1] && !x.archived);
       if (!c) return html(res, 404, page({ title: 'DRT Creation', body: '<h1>Lien invalide</h1><p class="sub">Ce lien n’existe plus. Contactez DRT Creation.</p>', lang: 'fr' }));
@@ -483,6 +544,15 @@ const server = http.createServer(async (req, res) => {
       const f = form(await readBody(req));
       if (ADMIN_PASSWORD && same(f.password || '', ADMIN_PASSWORD)) { tries.delete(k); return redirect(res, '/admin', { 'Set-Cookie': COOKIE(mkSession(), 30 * 86400) }); }
       t.n++; tries.set(k, t); return html(res, 401, loginPage('Senha incorreta.'));
+    }
+    if ((mm = p.match(/^\/admin\/c\/([A-Za-z0-9_-]+)\/password$/)) && m === 'POST' && isAdmin(req)) {
+      const c = db().clients.find((x) => x.id === mm[1]); if (!c) return html(res, 404, 'Cliente não encontrado');
+      const pw = newPassword(); c.passHash = hashPw(pw); store.log('client', c.id, 'Nova senha da área do cliente gerada'); store.save();
+      const msg = `Bonjour ! Votre espace client DRT Creation : ${PUBLIC_URL}/login — identifiant ${loginOf(c)} — mot de passe ${pw}`;
+      return html(res, 200, page({ title: 'Senha · DRT Creation', nav: NAV(''), body: `<h1>Senha de ${esc(c.name)}</h1><p class="sub">Copie agora: ela não será mostrada de novo.</p>
+<div class="panel"><p style="margin:0 0 8px">Login: <b class="mono">${loginOf(c)}</b></p><p style="margin:0 0 14px">Senha: <b class="mono" style="font-size:20px">${esc(pw)}</b></p>
+<div class="copy"><input readonly value="${esc(msg)}" onclick="this.select()">${c.phone ? `<a class="btn sm" target="_blank" rel="noopener" href="https://wa.me/${c.phone.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}">Enviar por WhatsApp</a>` : ''}</div>
+<p style="margin:16px 0 0"><a class="btn" href="/admin/c/${c.id}">← Voltar ao cliente</a></p></div>` }));
     }
     if (p === '/admin/logout' && m === 'POST') return redirect(res, '/admin', { 'Set-Cookie': COOKIE('', 0) });
     if (!isAdmin(req)) return html(res, 200, loginPage());
