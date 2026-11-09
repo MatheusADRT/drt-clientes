@@ -1,7 +1,7 @@
 {
  "note": "Rotação da busca semanal de prospects. 'next' = índice do próximo bairro. Atualizado pela tarefa agendada.",
- "next": 0,
+ "next": 1,
  "areas": ["Ixelles", "Anderlecht (Cureghem)", "Schaerbeek", "Saint-Josse", "Etterbeek", "Molenbeek", "Uccle", "Jette", "Bruxelles-Centre", "Laeken", "Evere", "Koekelberg"],
  "types": ["barbershop", "salon de coiffure", "institut de beauté / onglerie", "restaurant", "snack / friterie", "restaurant brésilien ou portugais", "magasin de fête / décoration / ballons"],
- "done": [{"area": "Saint-Gilles + Forest", "date": "2026-11-08", "added": 47}]
+ "done": [{"area": "Saint-Gilles + Forest", "date": "2026-11-08", "added": 47}, {"area": "Ixelles", "date": "2026-11-09", "added": 48}]
 }
