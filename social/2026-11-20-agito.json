@@ -1,0 +1,85 @@
+{
+ "date": "2026-11-20T10:00:00",
+ "caption": "Système de commande pour restaurant : cette semaine, je vous montre un projet dont je suis fier. 🍣\n\nAgito Sushi Brussels, un restaurant de sushi brésilien à Saint-Gilles, avait besoin de plus qu’un site. On a construit un seul système, du clic jusqu’à la porte :\n\n→ Le client commande sur le site, avec photos et suppléments\n→ Il paie en ligne (carte, Bancontact, Apple Pay) ou en espèces\n→ La cuisine reçoit la commande et fixe l’heure\n→ Le livreur reçoit la course sur son téléphone\n→ Le client suit tout en direct\n\nLes commandes passent par le site du restaurant, pas par une plateforme qui prend une commission sur chacune. Et le système lui appartient.\n\nEt chez vous, les commandes passent encore par téléphone ? Dites-moi en commentaire 👇\n\nLe questionnaire pour votre projet est dans la bio.\n\n#bruxelles #brussels #saintgilles #restaurantbruxelles #sushibruxelles #commandeenligne #livraisonbruxelles #restaurateur #siteinternet #creationsiteweb #commercelocal #drtcreation",
+ "slides": [
+  {
+   "kind": "cover",
+   "kicker": "Projet · Agito Sushi Brussels",
+   "title": "Du clic à la porte,",
+   "em": "en un seul système.",
+   "sub": "Site de commande, cuisine et app livreur pour un restaurant de sushi brésilien à Saint-Gilles."
+  },
+  {
+   "kind": "shot",
+   "kicker": "01 · Commander",
+   "title": "Le client choisit",
+   "src": "../../drt-creation-site/img/agito-cardapio.webp",
+   "crop": [
+    0.4,
+    0.06,
+    0.58,
+    0.86
+   ],
+   "text": "Menu avec photos, suppléments et composition de combos."
+  },
+  {
+   "kind": "shot",
+   "kicker": "02 · Payer",
+   "title": "Il paie en ligne",
+   "src": "../../drt-creation-site/img/agito-pagamento.webp",
+   "crop": [
+    0.4,
+    0.06,
+    0.58,
+    0.86
+   ],
+   "text": "Carte, Bancontact, Apple Pay, ou **espèces à la livraison**."
+  },
+  {
+   "kind": "shot",
+   "kicker": "03 · Cuisiner",
+   "title": "La cuisine prend la main",
+   "src": "../../drt-creation-site/img/agito-cozinha.webp",
+   "crop": [
+    0.4,
+    0.06,
+    0.58,
+    0.86
+   ],
+   "text": "Les commandes arrivent en trois colonnes. La cuisine accepte et **fixe l’heure**."
+  },
+  {
+   "kind": "shot",
+   "kicker": "04 · Livrer",
+   "title": "Le livreur part",
+   "src": "../../drt-creation-site/img/agito-entregador.webp",
+   "crop": [
+    0.4,
+    0.06,
+    0.58,
+    0.86
+   ],
+   "text": "La course arrive sur son téléphone, avec l’itinéraire. Équipe propre ou Uber Direct."
+  },
+  {
+   "kind": "shot",
+   "kicker": "05 · Suivre",
+   "title": "Le client suit tout",
+   "src": "../../drt-creation-site/img/agito-acompanhamento.webp",
+   "crop": [
+    0.4,
+    0.06,
+    0.58,
+    0.86
+   ],
+   "text": "Suivi de la commande **en direct**, avec la carte."
+  },
+  {
+   "kind": "cta",
+   "kicker": "Votre restaurant aussi ?",
+   "title": "On en parle ?",
+   "text": "Questionnaire de **10 minutes**.\nProposition claire sous **48 h**.",
+   "button": "drtcreation.com/briefing"
+  }
+ ]
+}

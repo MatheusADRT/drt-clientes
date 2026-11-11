@@ -3,6 +3,7 @@
 // Gera os slides de um carrossel do Instagram (1080×1350) no visual da DRT Creation.
 // Uso: node tools/social.js <spec.json> <pasta-de-saída>
 //   photo: { src (arquivo local .jpg/.png), title, text, position } — foto real em tela cheia com texto por cima
+//   shot:  { src (imagem real do portfólio), crop: [x, y, w, h] em frações (opcional), title, text, kicker } — print/mockup de projeto real
 //   list.items: [[rótulo, valor, subtítulo opcional], ...]
 // spec = { "slides": [ { "kind": "cover"|"point"|"list"|"price"|"cta", ... } ] }
 //   cover: { kicker, title, em, sub }
@@ -53,6 +54,7 @@ h2{font:800 70px/1.04 "Archivo",Arial,sans-serif;font-stretch:108%;letter-spacin
 .box p{font-size:30px;color:#c3ccd1;margin-top:12px}
 .ph{position:absolute;inset:0;z-index:0!important;background-size:cover;background-position:center}.ph::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(7,20,26,.55) 0%,rgba(7,20,26,0) 28%,rgba(7,20,26,0) 45%,rgba(7,20,26,.92) 82%)}.s.photo::before,.s.photo::after{display:none}
 .pt{margin-top:auto;margin-bottom:70px}.pt h2{margin-top:0;font-size:64px}.pt p{font-size:34px;color:#e4e8ea;margin-top:18px}
+.shot{margin-top:34px;border-radius:22px;overflow:hidden;border:2px solid rgba(228,232,234,.16);box-shadow:0 30px 80px rgba(0,0,0,.5);position:relative;background:#0d1f28}.shot img{position:absolute;display:block}
 .btn{align-self:flex-start;margin-top:54px;background:#7fa0ff;color:#07141a;font:700 34px/1 "JetBrains Mono",monospace;letter-spacing:.04em;padding:30px 38px}
 `;
 
@@ -64,6 +66,7 @@ function slide(s, i, total) {
   if (s.kind === 'list') return `${head}<div class="c"><h2>${esc(s.title)}</h2><div class="list">${s.items.map(([a, b, sub]) => `<div><span>${md(a)}${sub ? `<small>${md(sub)}</small>` : ''}</span><b>${esc(b)}</b></div>`).join('')}</div>${s.note ? `<p class="note">${md(s.note)}</p>` : ''}</div>${foot}`;
   if (s.kind === 'price') return `${head}<div class="c"><h2>${esc(s.title)}</h2><div class="two">${['a', 'b'].map((k) => { const o = s[k]; return `<div class="box ${k}"><div class="l">${esc(o.label)}</div><div class="big">${esc(o.big)}${o.unit ? `<span>${esc(o.unit)}</span>` : ''}</div>${(o.lines || []).map((l) => `<p>${md(l)}</p>`).join('')}</div>`; }).join('')}</div>${s.note ? `<p class="note">${md(s.note)}</p>` : ''}</div>${foot}`;
   if (s.kind === 'photo') { const ext = path.extname(s.src).slice(1).toLowerCase().replace('jpg', 'jpeg'); const data = 'data:image/' + ext + ';base64,' + fs.readFileSync(path.resolve(path.dirname(SPEC), s.src)).toString('base64'); return `<div class="ph" style="background-image:url(${data});background-position:${esc(s.position || 'center')}"></div>${head}<div class="pt">${s.title ? `<h2>${esc(s.title)}</h2>` : ''}${s.text ? `<p>${md(s.text)}</p>` : ''}</div>`; }
+  if (s.kind === 'shot') { const ext = path.extname(s.src).slice(1).toLowerCase().replace('jpg', 'jpeg'); const data = 'data:image/' + ext + ';base64,' + fs.readFileSync(path.resolve(path.dirname(SPEC), s.src)).toString('base64'); const c = s.crop || [0, 0, 1, 1]; return `${head}<div class="c">${s.kicker ? `<div class="kick">${esc(s.kicker)}</div>` : ''}<h2${s.kicker ? ' style="margin-top:26px"' : ''}>${esc(s.title)}</h2><div class="shot" data-crop="${c.join(',')}"><img src="${data}" alt=""></div>${s.text ? `<p class="p" style="margin-top:30px">${md(s.text)}</p>` : ''}</div>${foot}`; }
   if (s.kind === 'cta') return `${head}<div class="c"><div class="kick">${esc(s.kicker || 'Et maintenant ?')}</div><h1 style="font-size:92px">${esc(s.title)}</h1><p class="sub">${md(s.text)}</p><span class="btn">${esc(s.button)}</span>${s.foot ? `<p class="note" style="margin-top:34px">${md(s.foot)}</p>` : ''}</div><div class="foot"><span>@drtcreation</span><span>drtcreation.com</span></div>`;
   throw new Error('tipo de slide desconhecido: ' + s.kind);
 }
@@ -77,7 +80,7 @@ function slide(s, i, total) {
   const css = CSS(); const out = [];
   for (const [i, s] of spec.slides.entries()) {
     await pg.setContent(`<!doctype html><html><head><meta charset="utf-8"><style>${css}</style></head><body><section class="s${s.kind === 'photo' ? ' photo' : ''}">${slide(s, i, spec.slides.length)}</section></body></html>`, { waitUntil: 'load' });
-    await pg.evaluate(() => document.fonts.ready);
+    await pg.evaluate(async () => { await document.fonts.ready; for (const box of document.querySelectorAll('.shot')) { const im = box.querySelector('img'); if (!im.complete) await new Promise((r) => { im.onload = r; }); const [x, y, w, h] = box.dataset.crop.split(',').map(Number); const W = box.clientWidth; const scale = W / (im.naturalWidth * w); const Hc = im.naturalHeight * h * scale; const maxH = 640; const k = Hc > maxH ? maxH / Hc : 1; box.style.height = (Hc * k) + 'px'; if (k < 1) { box.style.width = (W * k) + 'px'; box.style.alignSelf = 'center'; } const sc = scale * k; im.style.width = (im.naturalWidth * sc) + 'px'; im.style.left = (-x * im.naturalWidth * sc) + 'px'; im.style.top = (-y * im.naturalHeight * sc) + 'px'; } });
     const over = await pg.evaluate(() => { const s = document.querySelector('.s'); return [...s.children].some((e) => e.getBoundingClientRect().bottom > 1350 || e.getBoundingClientRect().right > 1080); });
     if (over) console.warn('⚠ slide ' + (i + 1) + ' passa da borda');
     const f = path.join(outDir, String(i + 1).padStart(2, '0') + '.jpg');
