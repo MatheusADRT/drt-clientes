@@ -1,0 +1,14 @@
+{
+ "date": "2026-11-18T10:00:00",
+ "caption": "Comment se passe la création de votre site avec DRT Creation ? 🛠️\n\nPas de jargon, pas de surprise. Voici les 6 étapes, du premier message à la mise en ligne :\n\n1. Un questionnaire de 10 minutes, depuis votre téléphone\n2. Un appel de 20 minutes pour bien comprendre votre commerce\n3. Une proposition claire sous 48 h, avec ou sans apport\n4. Une maquette à valider avant de construire\n5. La mise en ligne\n6. Un espace client pour suivre vos visites, vos factures et vos demandes\n\nEt après ? On reste là : sécurité, mises à jour et petites modifications chaque mois.\n\n👉 Le questionnaire est dans la bio.\n\n📌 Enregistrez ce post pour le jour où vous lancez votre projet.\n\n#bruxelles #brussels #siteinternet #creationsiteweb #commercelocal #restaurantbruxelles #barbershopbruxelles #entrepreneurbelge #petitesentreprises #webdesign #drtcreation",
+ "slides": [
+  {"kind": "cover", "kicker": "De A à Z", "title": "Votre site en 6 étapes,", "em": "sans prise de tête.", "sub": "Du premier message à la mise en ligne : voici exactement comment ça se passe."},
+  {"kind": "point", "n": "01", "title": "Un questionnaire de 10 minutes", "text": "Depuis votre téléphone, surtout des cases à cocher. Vous ne savez pas ? **Passez la question**, on en parle ensemble.", "tag": "drtcreation.com/briefing"},
+  {"kind": "point", "n": "02", "title": "Un appel de 20 minutes", "text": "On comprend votre commerce, vos clients et ce qui vous fait perdre du temps aujourd’hui. **En français ou en portugais.**"},
+  {"kind": "point", "n": "03", "title": "Une proposition claire sous 48 h", "text": "Ce qui est inclus, le calendrier et **deux façons de payer** : avec ou sans apport. Vous acceptez et signez en ligne, en une minute.", "tag": "Aides possibles : Prime Digitalisation (Bruxelles)"},
+  {"kind": "point", "n": "04", "title": "Une maquette à valider", "text": "Vous voyez votre site **avant** qu’on le construise. On ajuste les couleurs, les textes et les photos avec vous."},
+  {"kind": "point", "n": "05", "title": "La mise en ligne", "text": "Site rapide, adapté au téléphone, relié à votre fiche Google. **Le site vous appartient.**"},
+  {"kind": "point", "n": "06", "title": "Votre espace client", "text": "Votre carte de membre, vos visites chaque mois, vos factures et vos demandes de modification, **au même endroit**.", "tag": "Sécurité, mises à jour et sauvegardes incluses"},
+  {"kind": "cta", "kicker": "Votre projet", "title": "On commence ?", "text": "Questionnaire de **10 minutes**.\nProposition claire sous **48 h**.", "button": "drtcreation.com/briefing"}
+ ]
+}
