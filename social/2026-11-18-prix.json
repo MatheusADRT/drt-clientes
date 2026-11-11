@@ -1,0 +1,104 @@
+{
+ "date": "2026-11-18T10:00:00",
+ "caption": "Combien coûte un site pour un commerce à Bruxelles en 2026 ? 💶\n\nOn reçoit souvent la question, alors voici nos prix, sans « sur devis » flou :\n\n✅ Site vitrine sur mesure (jusqu’à 5 pages) : 1 000 €\n✅ Réservation ou rendez-vous en ligne : + 500 €\n✅ Commande en ligne : + 1 000 €\n✅ Boutique en ligne : 1 500 €\n\nEt pour ne pas tout payer d’un coup : la formule sans apport, maintenance comprise.\n\nTout est clair dès le départ, et le site vous appartient.\n\n👉 Questionnaire de 10 minutes et proposition sous 48 h : lien dans la bio.\n\n📌 Enregistrez ce post pour le jour où vous lancez votre projet.\n\n#bruxelles #brussels #siteinternet #creationsiteweb #prixsiteinternet #commercelocal #restaurantbruxelles #barbershopbruxelles #entrepreneurbelge #primedigitalisation #webdesign #drtcreation",
+ "slides": [
+  {
+   "kind": "cover",
+   "kicker": "Prix 2026 · Bruxelles",
+   "title": "Combien coûte un site pour votre commerce ?",
+   "em": "Nos vrais prix.",
+   "sub": "Sans « sur devis » flou. Tout est clair dès le départ."
+  },
+  {
+   "kind": "list",
+   "title": "Ce que coûte la création",
+   "items": [
+    [
+     "Site vitrine sur mesure",
+     "1 000 €",
+     "jusqu’à 5 pages, adapté au mobile"
+    ],
+    [
+     "Réservation / rendez-vous en ligne",
+     "+ 500 €"
+    ],
+    [
+     "Commande en ligne (restaurant)",
+     "+ 1 000 €"
+    ],
+    [
+     "Boutique en ligne",
+     "1 500 €"
+    ],
+    [
+     "Langue supplémentaire",
+     "+ 50 €"
+    ]
+   ],
+   "note": "TVA non applicable (régime de franchise). Le site vous appartient."
+  },
+  {
+   "kind": "price",
+   "title": "Deux façons de payer",
+   "a": {
+    "label": "A · Avec apport",
+    "big": "1 000 €",
+    "lines": [
+     "puis **80 € / mois** de maintenance",
+     "Idéal si vous demandez la Prime Digitalisation"
+    ]
+   },
+   "b": {
+    "label": "B · Sans apport",
+    "big": "129 €",
+    "unit": "/ mois",
+    "lines": [
+     "pendant 24 mois, **maintenance comprise**",
+     "puis 80 € / mois. **0 € au départ.**"
+    ]
+   },
+   "note": "Exemple pour un site vitrine."
+  },
+  {
+   "kind": "list",
+   "title": "Inclus dans la maintenance",
+   "items": [
+    [
+     "Hébergement + nom de domaine",
+     "✓"
+    ],
+    [
+     "Sécurité, mises à jour, sauvegardes",
+     "✓"
+    ],
+    [
+     "Surveillance 24 h/24",
+     "✓"
+    ],
+    [
+     "Petites modifications chaque mois",
+     "✓"
+    ],
+    [
+     "Espace client : visites, factures, demandes",
+     "✓"
+    ]
+   ],
+   "note": "Un seul interlocuteur, en français ou en portugais."
+  },
+  {
+   "kind": "point",
+   "n": "%",
+   "title": "Jusqu’à 70 % remboursés",
+   "text": "À Bruxelles, la **Prime Digitalisation** peut rembourser de 25 à 70 % du projet. La demande se fait **avant** de commencer : on prépare le dossier avec vous, sans frais.",
+   "tag": "Éligibilité vérifiée par la Région, au cas par cas"
+  },
+  {
+   "kind": "cta",
+   "kicker": "Votre projet",
+   "title": "Recevez votre prix exact",
+   "text": "Questionnaire de **10 minutes**.\nProposition claire sous **48 h**, avec les deux façons de payer.",
+   "button": "drtcreation.com/briefing"
+  }
+ ]
+}
