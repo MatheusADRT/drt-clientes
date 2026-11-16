@@ -2,9 +2,10 @@
 # Manda o resultado para a central, que o mostra como "testé depuis l'Europe et les États-Unis".
 # Segredos do repositório: CENTRAL_URL (ex.: https://clientes.drtcreation.com) e PROBE_SECRET (mesmo valor que no Render).
 name: probe
+# Agendamento desligado (o Matheus não quer os e-mails). Para religar, configure os segredos e volte com:
+#   schedule:
+#     - cron: '*/15 * * * *'
 on:
-  schedule:
-    - cron: '*/15 * * * *'
   workflow_dispatch:
 permissions:
   contents: read
