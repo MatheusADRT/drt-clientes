@@ -19,6 +19,7 @@ jobs:
           PROBE_SECRET: ${{ secrets.PROBE_SECRET }}
         run: |
           set -e
+          if [ -z "$CENTRAL_URL" ] || [ -z "$PROBE_SECRET" ]; then echo "Segredos CENTRAL_URL/PROBE_SECRET não configurados: teste dos EUA desligado."; exit 0; fi
           sites=$(curl -sS -H "Authorization: Bearer $PROBE_SECRET" "$CENTRAL_URL/api/probe/sites")
           results="["
           for u in $(echo "$sites" | tr -d '[]"' | tr ',' ' '); do
