@@ -1,6 +1,6 @@
 {
  "note": "Rotação da busca semanal de prospects. 'next' = índice do próximo bairro. Atualizado pela tarefa agendada.",
- "next": 2,
+ "next": 3,
  "areas": [
   "Ixelles",
   "Anderlecht (Cureghem)",
@@ -39,6 +39,11 @@
    "area": "Anderlecht (Cureghem)",
    "date": "2026-11-16",
    "added": 55
+  },
+  {
+   "area": "Schaerbeek",
+   "date": "2026-11-23",
+   "added": 48
   }
  ]
 }
